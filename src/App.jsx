@@ -1,189 +1,142 @@
+import { useState } from "react";
 import {
+  House,
   Users,
-  Gamepad2,
-  History,
-  Settings,
+  Dice5,
   Trophy,
-  Plus
+  Settings
 } from "lucide-react";
 
 import "./App.css";
 
+import Players from "./pages/Players";
+import Machines from "./pages/Machines";
+import Tournament from "./pages/Tournament";
+import CurrentTournament from "./pages/CurrentTournament";
+
 export default function App() {
+  const currentTournament =
+  localStorage.getItem(
+    "currentTournament"
+  );
+  console.log(currentTournament);
+  const [page, setPage] =
+    useState("home");
+
+  function renderPage() {
+    switch (page) {
+      case "players":
+        return <Players />;
+
+      case "machines":
+        return <Machines />;
+
+        case "tournament":
+  return <Tournament />;
+
+  case "current":
+  return <CurrentTournament />;
+
+      default:
+        return (
+          <div className="page">
+            <h1>🎯 Pinheads</h1>
+
+{currentTournament && (
+  <div className="player-card">
+    <div>
+      🏆 Tournament In Progress
+      <br />
+      Click Tournament to resume.
+    </div>
+  </div>
+)}
+
+            <div className="home-grid">
+
+              <button
+                className="nav-card"
+                onClick={() =>
+                  setPage("players")
+                }
+              >
+                <Users size={36}/>
+                Players
+              </button>
+
+              <button
+                className="nav-card"
+                onClick={() =>
+                  setPage("machines")
+                }
+              >
+                <Dice5 size={36}/>
+                Machines
+              </button>
+
+<button
+ className="nav-card"
+  onClick={() =>
+    setPage(
+      currentTournament
+        ? "current"
+        : "tournament"
+    )
+  }
+>
+  <Trophy size={36} />
+
+  {currentTournament
+    ? "Resume Tournament"
+    : "Tournament"}
+</button>
+
+              <button
+                className="nav-card"
+              >
+                <Settings size={36}/>
+                Settings
+              </button>
+
+            </div>
+          </div>
+        );
+    }
+  }
 
   return (
-
     <div className="app">
 
-      <header className="header">
+      {renderPage()}
 
-        <div className="brand">
+      <nav className="bottom-nav">
 
-          <div className="logo">
-            🎯
-          </div>
-
-          <div>
-            <h1>
-              PINHEADS
-            </h1>
-
-            <p>
-              Tournament Manager
-            </p>
-
-          </div>
-
-        </div>
-
-      </header>
-
-
-      <section className="hero">
-
-        <div className="label">
-          CURRENT TOURNAMENT
-        </div>
-
-
-        <h2>
-          No Active Tournament
-        </h2>
-
-
-        <p>
-          Start your first pinball tournament.
-        </p>
-
-
-        <button>
-
-          <Plus size={20}/>
-
-          New Tournament
-
+        <button
+          onClick={() =>
+            setPage("home")
+          }
+        >
+          <House size={22}/>
         </button>
 
+        <button
+          onClick={() =>
+            setPage("players")
+          }
+        >
+          <Users size={22}/>
+        </button>
 
-      </section>
-
-
-
-      <h3>
-        Quick Actions
-      </h3>
-
-
-      <div className="grid">
-
-
-        <Card
-          icon={<Users/>}
-          title="Players"
-        />
-
-
-        <Card
-          icon={<Gamepad2/>}
-          title="Machines"
-        />
-
-
-        <Card
-          icon={<History/>}
-          title="History"
-        />
-
-
-        <Card
-          icon={<Settings/>}
-          title="Settings"
-        />
-
-
-      </div>
-
-
-
-      <section className="champions">
-
-        <div className="champion-title">
-
-          <Trophy size={22}/>
-
-          Recent Champions
-
-        </div>
-
-
-        <p>
-          No tournaments completed yet.
-        </p>
-
-
-      </section>
-
-
-
-      <nav className="bottom">
-
-        <div className="active">
-          🏠
-          <span>
-            Home
-          </span>
-        </div>
-
-
-        <div>
-          🏆
-          <span>
-            Tournament
-          </span>
-        </div>
-
-
-        <div>
-          📊
-          <span>
-            Stats
-          </span>
-        </div>
-
-
-        <div>
-          ⚙
-          <span>
-            Settings
-          </span>
-        </div>
-
+        <button
+          onClick={() =>
+            setPage("machines")
+          }
+        >
+          <Dice5 size={22}/>
+        </button>
 
       </nav>
 
-
     </div>
-
   );
-
-}
-
-
-
-function Card({icon,title}) {
-
-  return (
-
-    <div className="card">
-
-      {icon}
-
-      <span>
-        {title}
-      </span>
-
-    </div>
-
-  );
-
 }
