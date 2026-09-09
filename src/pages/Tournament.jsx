@@ -1,370 +1,982 @@
-import { useEffect, useMemo, useState } from "react";
-import { OfflineBanner } from "../lib/offlineStatus";
-import {
-  cacheReferenceData,
-  loadReferenceData,
-  newId,
-  queueOperation,
-  refreshReferenceDataFromServer,
-  saveTournamentBundle,
-  syncQueue,
-} from "../lib/offlineStore";
-
-function shuffle(array) {
-  const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-}
-
-function edgeColorRounds(edges) {
-  const shuffled = shuffle(edges);
-  const rounds = [];
-
-  for (const edge of shuffled) {
-    let placed = false;
-    for (const round of rounds) {
-      const used = new Set();
-      round.forEach(([a, b]) => {
-        used.add(a);
-        used.add(b);
-      });
-      if (!used.has(edge[0]) && !used.has(edge[1])) {
-        round.push(edge);
-        placed = true;
-        break;
-      }
-    }
-    if (!placed) rounds.push([edge]);
-  }
-
-  return shuffle(rounds);
-}
-
-function buildOddDegreeEdges(playerIds, degree) {
-  const n = playerIds.length;
-  const edges = [];
-  const seen = new Set();
-
-  for (let distance = 1; distance <= degree / 2; distance += 1) {
-    for (let i = 0; i < n; i += 1) {
-      const j = (i + distance) % n;
-      const a = playerIds[Math.min(i, j)];
-      const b = playerIds[Math.max(i, j)];
-      const key = `${a}:${b}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        edges.push([a, b]);
-      }
-    }
-  }
-
-  return edges;
-}
-
-function roundRobinCycle(playerIds) {
-  const players = [...playerIds];
-  if (players.length % 2 === 1) players.push(null);
-
-  const rounds = [];
-  const n = players.length;
-  const working = [...players];
-
-  for (let round = 0; round < n - 1; round += 1) {
-    const games = [];
-    for (let i = 0; i < n / 2; i += 1) {
-      const a = working[i];
-      const b = working[n - 1 - i];
-      if (a && b) games.push([a, b]);
-    }
-    rounds.push(games);
-
-    const fixed = working[0];
-    const rotating = working.slice(1);
-    rotating.unshift(rotating.pop());
-    working.splice(0, working.length, fixed, ...rotating);
-  }
-
-  return rounds;
-}
-
-export function generateHeadToHeadMatches(playerIds, gamesPerPlayer) {
-  const playerCount = playerIds.length;
-  const totalSlots = playerCount * gamesPerPlayer;
-
-  if (totalSlots % 2 !== 0) {
-    throw new Error("This player/game combination cannot produce an equal number of Head-to-Head games.");
-  }
-
-  if (playerCount < 2) throw new Error("At least 2 players are required.");
-
-  const rounds = [];
-
-  if (playerCount === 2) {
-    for (let i = 0; i < gamesPerPlayer; i += 1) {
-      rounds.push([[playerIds[0], playerIds[1]]]);
-    }
-  } else if (playerCount % 2 === 0) {
-    const cycle = roundRobinCycle(playerIds);
-    for (let i = 0; i < gamesPerPlayer; i += 1) {
-      rounds.push(shuffle(cycle[i % cycle.length]));
-    }
-  } else {
-    const cycleSize = playerCount - 1;
-    const fullCycles = Math.floor(gamesPerPlayer / cycleSize);
-    const remainder = gamesPerPlayer % cycleSize;
-
-    for (let cycle = 0; cycle < fullCycles; cycle += 1) {
-      const cycleRounds = roundRobinCycle(shuffle(playerIds));
-      cycleRounds.forEach((round) => rounds.push(shuffle(round)));
-    }
-
-    if (remainder > 0) {
-      const edges = buildOddDegreeEdges(shuffle(playerIds), remainder);
-      rounds.push(...edgeColorRounds(edges));
-    }
-  }
-
-  const games = [];
-  let gameNumber = 1;
-  rounds.forEach((round, roundIndex) => {
-    shuffle(round).forEach(([player1, player2]) => {
-      games.push({
-        gameNumber: gameNumber++,
-        roundNumber: roundIndex + 1,
-        player1,
-        player2,
-      });
-    });
-  });
-
-  const counts = Object.fromEntries(playerIds.map((id) => [id, 0]));
-  const opponents = new Set();
-  games.forEach((game) => {
-    counts[game.player1] += 1;
-    counts[game.player2] += 1;
-    const pair = [game.player1, game.player2].sort().join(":");
-    opponents.add(pair);
-  });
-
-  const invalid = playerIds.filter((id) => counts[id] !== gamesPerPlayer);
-  if (invalid.length) {
-    throw new Error("Schedule generation failed: every player must receive exactly the requested number of games.");
-  }
-
-  if (games.length !== totalSlots / 2) {
-    throw new Error("Schedule generation failed: incorrect total game count.");
-  }
-
-  return games;
-}
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function Tournament() {
   const [players, setPlayers] = useState([]);
   const [locations, setLocations] = useState([]);
   const [machines, setMachines] = useState([]);
-  const [tournamentTypes, setTournamentTypes] = useState([]);
+
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState("");
   const [selectedMachines, setSelectedMachines] = useState([]);
+
   const [rounds, setRounds] = useState(10);
-  const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [loadingMachines, setLoadingMachines] = useState(false);
-  const [error, setError] = useState("");
-
-  async function loadData() {
-    setLoading(true);
-    setError("");
-    try {
-      let reference;
-      if (navigator.onLine) {
-        try {
-          reference = await refreshReferenceDataFromServer();
-        } catch (onlineError) {
-          console.warn("Using cached tournament setup:", onlineError);
-          reference = await loadReferenceData();
-        }
-      } else {
-        reference = await loadReferenceData();
-      }
-
-      setPlayers(reference.players || []);
-      setLocations(reference.locations || []);
-      setTournamentTypes(reference.tournamentTypes || []);
-    } catch (loadError) {
-      setError(loadError.message || "Unable to load tournament setup.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   useEffect(() => {
     loadData();
   }, []);
 
+  async function loadData() {
+    setLoading(true);
+
+    try {
+      const { data: locationData, error: locationError } =
+        await supabase
+          .from("locations")
+          .select("*")
+          .order("name", { ascending: true });
+
+      if (locationError) {
+        console.error("Locations error:", locationError);
+        alert(
+          locationError.message ||
+            "Unable to load locations."
+        );
+      } else {
+        setLocations(locationData || []);
+      }
+
+      const { data: playerData, error: playerError } =
+        await supabase
+          .from("players")
+          .select("*")
+          .order("created_at", { ascending: true });
+
+      if (playerError) {
+        console.error("Players error:", playerError);
+        alert(
+          playerError.message ||
+            "Unable to load players."
+        );
+      } else {
+        setPlayers(playerData || []);
+      }
+    } catch (error) {
+      console.error("Unable to load tournament setup:", error);
+      alert(
+        error.message ||
+          "Unable to load tournament setup."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function loadLocationMachines(locationId) {
     setSelectedLocation(locationId);
     setSelectedMachines([]);
     setMachines([]);
-    if (!locationId) return;
+
+    if (!locationId) {
+      return;
+    }
+
     setLoadingMachines(true);
 
     try {
-      const reference = await loadReferenceData();
-      const rows = (reference.locationMachines || []).filter((row) => row.location_id === locationId);
-      const names = new Set(rows.map((row) => (row.machine_name || "").trim().toLowerCase()));
-      setMachines((reference.machines || []).filter((machine) => names.has((machine.name || "").trim().toLowerCase())));
-    } catch (loadError) {
-      alert(loadError.message || "Unable to load machines for this location.");
+      const { data: locationMachines, error } =
+        await supabase
+          .from("location_machines")
+          .select("machine_name, status")
+          .eq("location_id", locationId)
+          .order("machine_name", {
+            ascending: true,
+          });
+
+      if (error) {
+        throw error;
+      }
+
+      // Every machine listed for the selected location is
+      // available for tournament setup. The location_machines
+      // table currently uses statuses such as "available",
+      // so do not filter these rows by status.
+      const locationMachineRows = locationMachines || [];
+
+      if (locationMachineRows.length === 0) {
+        setMachines([]);
+        setLoadingMachines(false);
+        return;
+      }
+
+      const { data: allMachines, error: machineError } =
+        await supabase
+          .from("machines")
+          .select("*")
+          .order("name", {
+            ascending: true,
+          });
+
+      if (machineError) {
+        throw machineError;
+      }
+
+      const locationMachineNames = new Set(
+        locationMachineRows.map(
+          (machine) =>
+            (machine.machine_name || "")
+              .trim()
+              .toLowerCase()
+        )
+      );
+
+      const matchingMachines = (allMachines || []).filter(
+        (machine) =>
+          locationMachineNames.has(
+            (machine.name || "").trim().toLowerCase()
+          )
+      );
+
+      setMachines(matchingMachines);
+    } catch (error) {
+      console.error(
+        "Unable to load location machines:",
+        error
+      );
+
+      alert(
+        error.message ||
+          "Unable to load machines for this location."
+      );
     } finally {
       setLoadingMachines(false);
     }
   }
 
-  function togglePlayer(id) {
-    setSelectedPlayers((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  function togglePlayer(playerId) {
+    setSelectedPlayers((prev) =>
+      prev.includes(playerId)
+        ? prev.filter((id) => id !== playerId)
+        : [...prev, playerId]
+    );
   }
 
-  function toggleMachine(id) {
-    setSelectedMachines((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  function toggleMachine(machineId) {
+    setSelectedMachines((prev) =>
+      prev.includes(machineId)
+        ? prev.filter((id) => id !== machineId)
+        : [...prev, machineId]
+    );
   }
 
-  const selectedLocationName = useMemo(
-    () => locations.find((location) => location.id === selectedLocation)?.name || "",
-    [locations, selectedLocation]
-  );
+  function generateHeadToHeadMatches(
+    playerIds,
+    gamesPerPlayer
+  ) {
+    const playerCount = playerIds.length;
+
+    if (
+      (playerCount * gamesPerPlayer) %
+        2 !==
+      0
+    ) {
+      throw new Error(
+        "This combination of players and games cannot create an equal Head-to-Head schedule."
+      );
+    }
+
+    const games = [];
+    let gameNumber = 1;
+
+    // Two players:
+    // They play each other every game.
+    if (playerCount === 2) {
+      for (
+        let i = 0;
+        i < gamesPerPlayer;
+        i++
+      ) {
+        games.push({
+          gameNumber: gameNumber++,
+          roundNumber: i + 1,
+          player1: playerIds[0],
+          player2: playerIds[1],
+        });
+      }
+
+      return games;
+    }
+
+    // Even number of players.
+    // Build a true round-robin schedule.
+    if (playerCount % 2 === 0) {
+      const participants = [...playerIds];
+      const rounds = [];
+
+      for (
+        let round = 0;
+        round < playerCount - 1;
+        round++
+      ) {
+        const roundGames = [];
+
+        for (
+          let i = 0;
+          i < playerCount / 2;
+          i++
+        ) {
+          roundGames.push({
+            player1:
+              participants[i],
+            player2:
+              participants[
+                playerCount - 1 - i
+              ],
+          });
+        }
+
+        rounds.push(roundGames);
+
+        // Keep first player fixed and
+        // rotate everyone else.
+        const fixed =
+          participants[0];
+
+        const rotating =
+          participants.slice(1);
+
+        rotating.unshift(
+          rotating.pop()
+        );
+
+        participants.splice(
+          0,
+          participants.length,
+          fixed,
+          ...rotating
+        );
+      }
+
+      // Randomize the order of the
+      // round-robin rounds.
+      const shuffledRounds =
+        [...rounds].sort(
+          () => Math.random() - 0.5
+        );
+
+      for (
+        let round = 0;
+        round < gamesPerPlayer;
+        round++
+      ) {
+        const sourceRound =
+          shuffledRounds[
+            round %
+              shuffledRounds.length
+          ];
+
+        const shuffledGames =
+          [...sourceRound].sort(
+            () => Math.random() - 0.5
+          );
+
+        shuffledGames.forEach(
+          (game) => {
+            games.push({
+              gameNumber:
+                gameNumber++,
+              roundNumber:
+                round + 1,
+              player1:
+                game.player1,
+              player2:
+                game.player2,
+            });
+          }
+        );
+      }
+
+      return games;
+    }
+
+    // Odd number of players.
+    // Build games while trying to minimize
+    // repeated opponents and distribute
+    // sit-outs evenly.
+    const totalGames =
+      (playerCount *
+        gamesPerPlayer) /
+      2;
+
+    const gamesPlayed = {};
+    const opponentCounts = {};
+
+    playerIds.forEach(
+      (playerId) => {
+        gamesPlayed[playerId] = 0;
+        opponentCounts[playerId] = {};
+      }
+    );
+
+    let safetyCounter = 0;
+
+    while (
+      games.length < totalGames
+    ) {
+      safetyCounter++;
+
+      if (safetyCounter > 10000) {
+        throw new Error(
+          "Unable to generate a balanced Head-to-Head schedule."
+        );
+      }
+
+      const availablePlayers =
+        [...playerIds]
+          .filter(
+            (playerId) =>
+              gamesPlayed[playerId] <
+              gamesPerPlayer
+          )
+          .sort(
+            (a, b) =>
+              gamesPlayed[a] -
+                gamesPlayed[b] ||
+              Math.random() -
+                0.5
+          );
+
+      const usedThisRound =
+        new Set();
+
+      let createdThisRound = false;
+
+      for (
+        let i = 0;
+        i <
+        availablePlayers.length;
+        i++
+      ) {
+        const player1 =
+          availablePlayers[i];
+
+        if (
+          usedThisRound.has(
+            player1
+          )
+        ) {
+          continue;
+        }
+
+        const opponents =
+          availablePlayers
+            .filter(
+              (player2) =>
+                player2 !== player1 &&
+                !usedThisRound.has(
+                  player2
+                ) &&
+                gamesPlayed[player2] <
+                  gamesPerPlayer
+            )
+            .sort((a, b) => {
+              const countA =
+                opponentCounts[
+                  player1
+                ][a] || 0;
+
+              const countB =
+                opponentCounts[
+                  player1
+                ][b] || 0;
+
+              return (
+                countA - countB
+              );
+            });
+
+        if (
+          opponents.length === 0
+        ) {
+          continue;
+        }
+
+        const player2 =
+          opponents[0];
+
+        games.push({
+          gameNumber:
+            gameNumber++,
+          roundNumber:
+            Math.max(
+              ...playerIds.map(
+                (id) =>
+                  gamesPlayed[id]
+              )
+            ) + 1,
+          player1,
+          player2,
+        });
+
+        gamesPlayed[player1]++;
+        gamesPlayed[player2]++;
+
+        opponentCounts[
+          player1
+        ][player2] =
+          (opponentCounts[
+            player1
+          ][player2] || 0) + 1;
+
+        opponentCounts[
+          player2
+        ][player1] =
+          (opponentCounts[
+            player2
+          ][player1] || 0) + 1;
+
+        usedThisRound.add(
+          player1
+        );
+        usedThisRound.add(
+          player2
+        );
+
+        createdThisRound = true;
+
+        if (
+          games.length >=
+          totalGames
+        ) {
+          break;
+        }
+      }
+
+      if (!createdThisRound) {
+        throw new Error(
+          "Unable to generate a balanced Head-to-Head schedule."
+        );
+      }
+    }
+
+    return games;
+  }
 
   async function createTournament() {
-    if (localStorage.getItem("currentTournament")) {
-      alert("A tournament is already in progress. Complete or cancel it before starting another tournament.");
+    if (!selectedLocation) {
+      alert(
+        "Select a tournament location."
+      );
       return;
     }
-    if (!selectedLocation) return alert("Select a tournament location.");
-    if (selectedPlayers.length < 2) return alert("Select at least 2 players.");
-    if (!selectedMachines.length) return alert("Select at least 1 machine.");
 
-    const gamesPerPlayer = Number(rounds);
-    if (!Number.isInteger(gamesPerPlayer) || gamesPerPlayer < 3 || gamesPerPlayer > 10) {
-      return alert("Games per player must be a whole number between 3 and 10.");
-    }
-    if (selectedPlayers.length % 2 !== 0 && gamesPerPlayer % 2 !== 0) {
-      return alert("With an odd number of players, Games Per Player must be an even number.");
+    if (selectedPlayers.length < 2) {
+      alert(
+        "Select at least 2 players."
+      );
+      return;
     }
 
-    const tournamentType = tournamentTypes.find((type) => type.slug === "head_to_head" && type.active !== false);
-    if (!tournamentType) {
-      return alert("Connect to the internet once so the Head-to-Head tournament type can be cached on this device.");
+    if (selectedMachines.length === 0) {
+      alert(
+        "Select at least 1 machine."
+      );
+      return;
+    }
+
+    const gamesPerPlayer =
+      Number(rounds);
+
+    if (
+      gamesPerPlayer < 3 ||
+      gamesPerPlayer > 10
+    ) {
+      alert(
+        "Games per player must be between 3 and 10."
+      );
+      return;
+    }
+
+    // Odd players require an even
+    // number of games per player.
+    if (
+      selectedPlayers.length % 2 !==
+        0 &&
+      gamesPerPlayer % 2 !== 0
+    ) {
+      alert(
+        "With an odd number of players, Games Per Player must be an even number."
+      );
+      return;
     }
 
     setCreating(true);
+
     try {
-      const matches = generateHeadToHeadMatches(selectedPlayers, gamesPerPlayer);
-      const tournamentId = newId();
-      const now = new Date().toISOString();
-      const tournament = {
-        id: tournamentId,
-        created_at: now,
-        name: name.trim() || `${selectedLocationName || "Pinheads"} Head-to-Head`,
-        tournament_date: new Date().toISOString().slice(0, 10),
-        scoring_system: "1/0",
-        completed: false,
-        tournament_type_id: tournamentType.id,
-        total_rounds: Math.max(...matches.map((match) => match.roundNumber)),
-        games_per_player: gamesPerPlayer,
-        status: "active",
-        completed_at: null,
-        location_id: selectedLocation,
-      };
+      const {
+        data: tournamentTypeRows,
+        error: typeError,
+      } = await supabase
+        .from("tournament_types")
+        .select("*")
+        .eq("slug", "head_to_head")
+        .eq("active", true);
 
-      const tournamentPlayers = selectedPlayers.map((playerId) => ({
-        id: newId(),
-        tournament_id: tournamentId,
-        player_id: playerId,
-        created_at: now,
-      }));
+      if (typeError) {
+        throw typeError;
+      }
 
-      const matchRows = matches.map((match) => ({
-        id: newId(),
-        tournament_id: tournamentId,
-        round_number: match.roundNumber,
-        machine_id: selectedMachines[(match.gameNumber - 1) % selectedMachines.length],
-        status: "pending",
-        match_type: "regular",
-        version: 1,
-        created_at: now,
-      }));
-
-      const matchPlayers = [];
-      matchRows.forEach((matchRow, index) => {
-        const source = matches[index];
-        matchPlayers.push(
-          { id: newId(), match_id: matchRow.id, player_id: source.player1, position: null, points: 0, created_at: now },
-          { id: newId(), match_id: matchRow.id, player_id: source.player2, position: null, points: 0, created_at: now }
+      if (
+        !tournamentTypeRows ||
+        tournamentTypeRows.length !== 1
+      ) {
+        throw new Error(
+          `Expected exactly 1 active Head-to-Head tournament type, but found ${
+            tournamentTypeRows?.length ||
+            0
+          }.`
         );
+      }
+
+      const tournamentType =
+        tournamentTypeRows[0];
+
+      const {
+        data: tournament,
+        error: tournamentError,
+      } = await supabase
+        .from("tournaments")
+        .insert({
+          name:
+            "Head-to-Head Tournament",
+          tournament_type_id:
+            tournamentType.id,
+          location_id:
+            selectedLocation,
+          total_rounds:
+            gamesPerPlayer,
+          status: "active",
+        })
+        .select()
+        .single();
+
+      if (tournamentError) {
+        throw tournamentError;
+      }
+
+      const tournamentPlayerRows =
+        selectedPlayers.map(
+          (playerId) => ({
+            tournament_id:
+              tournament.id,
+            player_id: playerId,
+          })
+        );
+
+      const {
+        error: playersError,
+      } = await supabase
+        .from("tournament_players")
+        .insert(
+          tournamentPlayerRows
+        );
+
+      if (playersError) {
+        throw playersError;
+      }
+
+      const matches =
+        generateHeadToHeadMatches(
+          selectedPlayers,
+          gamesPerPlayer
+        );
+
+      const expectedMatches =
+        (selectedPlayers.length *
+          gamesPerPlayer) /
+        2;
+
+      if (
+        matches.length !==
+        expectedMatches
+      ) {
+        throw new Error(
+          `Schedule error: expected ${expectedMatches} games but generated ${matches.length}.`
+        );
+      }
+
+      // Verify every player has
+      // exactly the requested number
+      // of games.
+      const verification = {};
+
+      selectedPlayers.forEach(
+        (playerId) => {
+          verification[playerId] = 0;
+        }
+      );
+
+      matches.forEach((match) => {
+        if (
+          !verification.hasOwnProperty(
+            match.player1
+          ) ||
+          !verification.hasOwnProperty(
+            match.player2
+          )
+        ) {
+          throw new Error(
+            "Schedule error: an unknown player was included."
+          );
+        }
+
+        if (
+          match.player1 ===
+          match.player2
+        ) {
+          throw new Error(
+            "Schedule error: a player cannot play against themselves."
+          );
+        }
+
+        verification[
+          match.player1
+        ]++;
+
+        verification[
+          match.player2
+        ]++;
       });
 
-      const bundle = { tournament, tournamentPlayers, matches: matchRows, matchPlayers };
-      await saveTournamentBundle(bundle);
-      await queueOperation("tournament_bundle", bundle);
-      localStorage.setItem("currentTournament", JSON.stringify({ id: tournamentId, type: "head_to_head", rounds: gamesPerPlayer, locationId: selectedLocation }));
+      const invalidPlayers =
+        selectedPlayers.filter(
+          (playerId) =>
+            verification[
+              playerId
+            ] !== gamesPerPlayer
+        );
 
-      if (navigator.onLine) await syncQueue();
+      if (
+        invalidPlayers.length > 0
+      ) {
+        throw new Error(
+          "Schedule error: one or more players do not have the correct number of games."
+        );
+      }
 
-      alert(navigator.onLine ? "Head-to-Head tournament created and synced." : "Head-to-Head tournament created on this device. It will sync automatically when you are back online.");
+      const matchRows =
+        matches.map((match) => ({
+          tournament_id:
+            tournament.id,
+          round_number:
+            match.roundNumber,
+          machine_id:
+            selectedMachines[
+              (match.gameNumber - 1) %
+                selectedMachines.length
+            ],
+          status: "pending",
+        }));
+
+      const {
+        data: createdMatches,
+        error: matchesError,
+      } = await supabase
+        .from("tournament_matches")
+        .insert(matchRows)
+        .select();
+
+      if (matchesError) {
+        throw matchesError;
+      }
+
+      const matchPlayerRows = [];
+
+      createdMatches.forEach(
+        (match, index) => {
+          const sourceMatch =
+            matches[index];
+
+          matchPlayerRows.push(
+            {
+              match_id: match.id,
+              player_id:
+                sourceMatch.player1,
+              position: null,
+              points: 0,
+            },
+            {
+              match_id: match.id,
+              player_id:
+                sourceMatch.player2,
+              position: null,
+              points: 0,
+            }
+          );
+        }
+      );
+
+      const {
+        error: matchPlayersError,
+      } = await supabase
+        .from("tournament_match_players")
+        .insert(
+          matchPlayerRows
+        );
+
+      if (matchPlayersError) {
+        throw matchPlayersError;
+      }
+
+      localStorage.setItem(
+        "currentTournament",
+        JSON.stringify({
+          id: tournament.id,
+          type: "head_to_head",
+          rounds: gamesPerPlayer,
+          locationId:
+            selectedLocation,
+        })
+      );
+
+      alert(
+        "Head-to-Head tournament created!"
+      );
+
       window.location.reload();
-    } catch (createError) {
-      console.error("Tournament creation failed:", createError);
-      alert(createError.message || "Unable to create tournament.");
+    } catch (error) {
+      console.error(
+        "Tournament creation failed:",
+        error
+      );
+
+      alert(
+        error.message ||
+          "Unable to create tournament."
+      );
     } finally {
       setCreating(false);
     }
   }
 
-  if (loading) return <div className="page"><h2>Tournament Wizard</h2><p>Loading players and locations...</p></div>;
-  if (error) return <div className="page"><h2>Tournament Wizard</h2><OfflineBanner /><p>{error}</p><button className="primary-button" onClick={loadData}>Retry</button></div>;
+  if (loading) {
+    return (
+      <div className="page">
+        <h2>
+          Tournament Wizard
+        </h2>
+        <p>
+          Loading players and locations...
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="page">
-      <OfflineBanner />
-      <h2>Tournament Wizard</h2>
-      <h3>Tournament Type</h3>
-      <div className="player-card"><strong>Head-to-Head</strong><br /><small>Two players per game. Winner gets 1 point.</small></div>
+      <h2>
+        Tournament Wizard
+      </h2>
 
-      <h3>Tournament Name</h3>
-      <input value={name} onChange={(event) => setName(event.target.value)} placeholder={`${selectedLocationName || "Pinheads"} Head-to-Head`} />
+      <h3>
+        Tournament Type
+      </h3>
 
-      <h3>Location</h3>
+      <div className="player-card">
+        <div>
+          <strong>
+            Head-to-Head
+          </strong>
+          <br />
+          <small>
+            Two players per game.
+            Winner gets 1 point.
+          </small>
+        </div>
+      </div>
+
+      <h3>
+        Location
+      </h3>
+
       {locations.length === 0 ? (
-        <div className="player-card"><p>No locations are cached on this device.</p><p>Connect once while online to download your tournament setup.</p></div>
+        <div className="player-card">
+          <p>
+            No locations have been
+            created yet.
+          </p>
+          <p>
+            Add a location before
+            creating a tournament.
+          </p>
+        </div>
       ) : (
         <div className="player-card">
-          <select value={selectedLocation} onChange={(event) => loadLocationMachines(event.target.value)} style={{ width: "100%", padding: "12px", borderRadius: "8px", fontSize: "16px" }}>
-            <option value="">Select a location...</option>
-            {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+          <select
+            value={selectedLocation}
+            onChange={(e) =>
+              loadLocationMachines(
+                e.target.value
+              )
+            }
+            style={{
+              width: "100%",
+              padding: "12px",
+              borderRadius: "8px",
+              fontSize: "16px",
+            }}
+          >
+            <option value="">
+              Select a location...
+            </option>
+
+            {locations.map(
+              (location) => (
+                <option
+                  key={location.id}
+                  value={location.id}
+                >
+                  {location.name}
+                </option>
+              )
+            )}
           </select>
         </div>
       )}
 
-      {selectedLocation && <>
-        <h3>Machines at Location</h3>
-        {loadingMachines ? <div className="player-card"><p>Loading machines...</p></div> : machines.length === 0 ? <div className="player-card"><p>No machines are assigned to this location.</p></div> : <div className="selection-grid">{machines.map((machine) => <button key={machine.id} className={selectedMachines.includes(machine.id) ? "selected-card" : "nav-card"} onClick={() => toggleMachine(machine.id)}>{selectedMachines.includes(machine.id) ? "✅ " : "🎰 "}{machine.name}</button>)}</div>}
-      </>}
+      {selectedLocation && (
+        <>
+          <h3>
+            Machines at Location
+          </h3>
 
-      <h3>Players</h3>
-      {players.length === 0 ? <div className="player-card"><p>No players are cached on this device.</p></div> : <div className="selection-grid">{players.map((player) => <button key={player.id} className={selectedPlayers.includes(player.id) ? "selected-card" : "nav-card"} onClick={() => togglePlayer(player.id)}>{selectedPlayers.includes(player.id) ? "✅ " : ""}{player.first_name}</button>)}</div>}
+          {loadingMachines ? (
+            <div className="player-card">
+              <p>
+                Loading machines...
+              </p>
+            </div>
+          ) : machines.length ===
+            0 ? (
+            <div className="player-card">
+              <p>
+                No machines are
+                assigned to this
+                location.
+              </p>
+              <p>
+                Add machines to this
+                location before
+                creating a tournament.
+              </p>
+            </div>
+          ) : (
+            <div className="selection-grid">
+              {machines.map(
+                (machine) => (
+                  <button
+                    key={machine.id}
+                    className={
+                      selectedMachines.includes(
+                        machine.id
+                      )
+                        ? "selected-card"
+                        : "nav-card"
+                    }
+                    onClick={() =>
+                      toggleMachine(
+                        machine.id
+                      )
+                    }
+                  >
+                    {selectedMachines.includes(
+                      machine.id
+                    )
+                      ? "✅ "
+                      : "🎰 "}
+                    {machine.name}
+                  </button>
+                )
+              )}
+            </div>
+          )}
+        </>
+      )}
 
-      <h3>Games Per Player</h3>
-      <input type="number" min="3" max="10" step="1" value={rounds} onChange={(event) => setRounds(event.target.value)} />
-      <p>Each player will play exactly {rounds} Head-to-Head games.</p>
-      {selectedPlayers.length % 2 !== 0 && <p><strong>Odd-player format:</strong> the app will balance byes automatically. A round may contain fewer games, but every player will still receive exactly {rounds} games.</p>}
-      <p><strong>Scoring:</strong> Win = 1 point, Loss = 0 points</p>
+      <h3>
+        Players
+      </h3>
 
-      <button className="primary-button" onClick={createTournament} disabled={creating || !selectedLocation || !selectedMachines.length || !selectedPlayers.length}>
-        {creating ? "Creating Tournament..." : "Create Tournament"}
+      {players.length === 0 ? (
+        <p>
+          No players yet. Add players
+          first.
+        </p>
+      ) : (
+        <div className="selection-grid">
+          {players.map((player) => (
+            <button
+              key={player.id}
+              className={
+                selectedPlayers.includes(
+                  player.id
+                )
+                  ? "selected-card"
+                  : "nav-card"
+              }
+              onClick={() =>
+                togglePlayer(
+                  player.id
+                )
+              }
+            >
+              {selectedPlayers.includes(
+                player.id
+              )
+                ? "✅ "
+                : ""}
+              {player.first_name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <h3>
+        Games Per Player
+      </h3>
+
+      <input
+        type="number"
+        min="3"
+        max="10"
+        value={rounds}
+        onChange={(e) =>
+          setRounds(e.target.value)
+        }
+      />
+
+      <p>
+        Each player will play
+        exactly {rounds}{" "}
+        Head-to-Head games.
+      </p>
+
+      <p>
+        <strong>
+          Scoring:
+        </strong>{" "}
+        Win = 1 point, Loss = 0
+        points
+      </p>
+
+      <br />
+
+      <button
+        className="primary-button"
+        onClick={createTournament}
+        disabled={
+          creating ||
+          !selectedLocation ||
+          selectedMachines.length ===
+            0
+        }
+      >
+        {creating
+          ? "Creating Tournament..."
+          : "Create Tournament"}
       </button>
     </div>
   );

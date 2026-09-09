@@ -146,10 +146,17 @@ export default function App() {
                 </div>
               </button>
 
-              <button className="nav-card">
-                <Settings size={36} />
-                <div>Settings</div>
-              </button>
+            <button
+  className="nav-card"
+  onClick={() =>
+    window.alert(
+      "⚙️ Settings\n\nComing Soon"
+    )
+  }
+>
+  <Settings size={36} />
+  <div>Settings</div>
+</button>
             </div>
           </div>
         );

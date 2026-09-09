@@ -1,527 +1,1474 @@
 /* =========================================================
-   PINHEADS TOURNAMENTS — APP STORE UI
-   v2: 3 x 2 desktop/tablet home + centered Home nav
+   PINHEADS TOURNAMENTS
+   PREMIUM DARK / IPHONE-STYLE UI
    ========================================================= */
 
-:root {
-  --pin-bg: #07090d;
-  --pin-text: #f7f8fa;
-  --pin-text-secondary: #a8adb8;
-  --pin-text-muted: #727782;
-  --pin-gold: #ffbd22;
-  --pin-gold-bright: #ffd15a;
-  --pin-blue: #43a7ff;
-  --pin-green: #43e58f;
-  --pin-red: #ff6262;
-  --pin-purple: #a879ff;
-  --pin-border: rgba(255,255,255,.11);
-  --pin-radius: 20px;
-  --pin-radius-sm: 14px;
-  --pin-shadow: 0 18px 50px rgba(0,0,0,.34);
-  --pin-shadow-sm: 0 8px 26px rgba(0,0,0,.28);
+/* =========================================================
+   RESET
+   ========================================================= */
+
+* {
+  box-sizing: border-box;
 }
 
-* { box-sizing: border-box; }
-
-html, body, #root {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-  background: var(--pin-bg);
+html {
+  background: #07080a;
+  color-scheme: dark;
 }
 
 body {
-  color: var(--pin-text);
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
-    "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "SF Pro Text",
+    "Segoe UI",
+    sans-serif;
+  background:
+    radial-gradient(
+      circle at 50% -10%,
+      rgba(201, 154, 62, 0.10),
+      transparent 38%
+    ),
+    #07080a;
+  color: #f5f5f7;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-button, input, select, textarea { font: inherit; }
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
 
 button {
   -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
 }
+
+img {
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* =========================================================
+   APP SHELL
+   ========================================================= */
 
 .app {
   min-height: 100vh;
+  min-height: 100dvh;
   background:
-    radial-gradient(circle at 50% -10%, rgba(255,189,34,.105), transparent 34%),
-    radial-gradient(circle at 100% 45%, rgba(67,167,255,.045), transparent 30%),
-    linear-gradient(180deg, #090b10 0%, #06080c 100%);
-  padding-bottom: 92px;
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(201, 154, 62, 0.07),
+      transparent 32%
+    ),
+    #07080a;
+  overflow-x: hidden;
 }
 
 .page {
-  width: min(1180px, 100%);
+  width: 100%;
+  max-width: 1180px;
+  min-height: calc(100vh - 90px);
+  min-height: calc(100dvh - 90px);
   margin: 0 auto;
-  padding: 34px 28px 110px;
+  padding: 42px 28px 120px;
 }
 
-/* The old text title is replaced by the graphic Pinheads logo. */
+/* =========================================================
+   TYPOGRAPHY
+   ========================================================= */
+
+.page h1,
+.page h2,
+.page h3,
+.page h4 {
+  color: #f5f5f7;
+  letter-spacing: -0.035em;
+}
+
+.page h1 {
+  font-size: clamp(34px, 5vw, 52px);
+  line-height: 1;
+  margin: 0 0 28px;
+}
+
+.page h2 {
+  font-size: clamp(30px, 5vw, 44px);
+  line-height: 1.05;
+  margin: 0 0 26px;
+}
+
+.page h3 {
+  font-size: 20px;
+  line-height: 1.15;
+  margin: 30px 0 14px;
+}
+
+.page p {
+  color: rgba(245, 245, 247, 0.68);
+  line-height: 1.55;
+}
+
+.page small {
+  color: rgba(245, 245, 247, 0.58);
+}
+
+/* =========================================================
+   OLD HOME TITLE
+   Hide the old 🎯 Pinheads heading.
+   The logo is supplied by the Home grid.
+   ========================================================= */
+
 .page > h1 {
   display: none;
 }
 
-.page h2 {
-  margin: 0 0 20px;
-  font-size: clamp(24px, 4vw, 32px);
-  line-height: 1.1;
-  font-weight: 800;
-  letter-spacing: -.7px;
-}
+/* =========================================================
+   HOME
+   ========================================================= */
 
-.page h3 {
-  margin: 25px 0 12px;
-  font-size: 21px;
-  font-weight: 750;
-}
-
-.page p {
-  line-height: 1.6;
-  color: var(--pin-text-secondary);
-}
-
-/* ---------------- HOME ---------------- */
-
-.page > .home-grid {
+.home-grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  width: 100%;
+  gap: 18px;
+  padding-top: 170px;
 }
 
-/* Graphic logo */
+/* Modern logo */
+
 .page > .home-grid::before {
   content: "";
-  grid-column: 1 / -1;
-  display: block;
-  width: min(760px, 82%);
-  aspect-ratio: 3.55 / 1;
-  margin: -5px auto 8px;
-  background: url("/pinheads-logo.svg") center / contain no-repeat;
-  filter:
-    drop-shadow(0 0 12px rgba(255,189,34,.18))
-    drop-shadow(0 18px 35px rgba(0,0,0,.35));
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: min(390px, 82vw);
+  height: 145px;
+  transform: translateX(-50%);
+  background-image: url("/pinheads-logo.svg");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
 }
 
-/* Six home tiles */
-.page > .home-grid .nav-card {
+/* Home cards */
+
+.nav-card {
   position: relative;
-  width: 100%;
-  min-width: 0;
-  height: 175px;
-  min-height: 175px;
-  max-height: 175px;
-  margin: 0;
-  padding: 18px 46px 18px 18px;
-  border: 1px solid var(--pin-border);
-  border-radius: var(--pin-radius);
+  min-height: 155px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 26px;
   background:
-    linear-gradient(145deg, rgba(255,255,255,.085), rgba(255,255,255,.032));
-  color: var(--pin-text);
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.075),
+      rgba(255, 255, 255, 0.025)
+    );
+  color: #f5f5f7;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 11px;
-  font-size: 18px;
-  font-weight: 750;
-  line-height: 1.12;
+  gap: 13px;
+  padding: 24px;
   cursor: pointer;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.045),
-    var(--pin-shadow-sm);
+    0 18px 45px rgba(0, 0, 0, 0.25),
+    inset 0 1px rgba(255, 255, 255, 0.035);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  transition: transform .18s ease, border-color .18s ease,
-    background .18s ease, box-shadow .18s ease;
-}
-
-/* Accent colors */
-.page > .home-grid .nav-card:nth-child(2) { --tile: var(--pin-gold); }
-.page > .home-grid .nav-card:nth-child(3) { --tile: var(--pin-blue); }
-.page > .home-grid .nav-card:nth-child(4) { --tile: var(--pin-green); }
-.page > .home-grid .nav-card:nth-child(5) { --tile: var(--pin-red); }
-.page > .home-grid .nav-card:nth-child(6) { --tile: #d5d9df; }
-.page > .home-grid .nav-card:nth-child(7) { --tile: var(--pin-purple); }
-
-.page > .home-grid .nav-card::after {
-  content: "›";
-  position: absolute;
-  right: 13px;
-  bottom: 12px;
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--tile) 42%, transparent);
-  border-radius: 50%;
-  color: var(--tile);
-  background: rgba(0,0,0,.18);
-  font-size: 26px;
-  line-height: 1;
-}
-
-.page > .home-grid .nav-card:hover {
-  transform: translateY(-4px);
-  border-color: color-mix(in srgb, var(--tile) 58%, transparent);
-  background:
-    linear-gradient(145deg,
-      color-mix(in srgb, var(--tile) 12%, rgba(255,255,255,.08)),
-      rgba(255,255,255,.035));
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.06),
-    0 18px 42px rgba(0,0,0,.36),
-    0 0 28px color-mix(in srgb, var(--tile) 10%, transparent);
-}
-
-.page > .home-grid .nav-card:active { transform: scale(.975); }
-
-.page > .home-grid .nav-card svg {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
-  color: var(--tile);
-  filter: drop-shadow(
-    0 0 9px color-mix(in srgb, var(--tile) 20%, transparent)
-  );
-}
-
-.page > .home-grid .nav-card > div {
-  text-align: center;
-  max-width: 92%;
-}
-
-/* ---------------- CARDS ---------------- */
-
-.player-card {
-  width: 100%;
-  margin: 0 0 16px;
-  padding: 20px;
-  border: 1px solid var(--pin-border);
-  border-radius: var(--pin-radius);
-  background: linear-gradient(145deg, rgba(255,255,255,.065), rgba(255,255,255,.028));
-  color: var(--pin-text);
-  box-shadow: var(--pin-shadow-sm);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-.player-card h2, .player-card h3 { margin-top: 0; }
-
-/* ---------------- BUTTONS ---------------- */
-
-.nav-card {
-  background: linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.035));
-  color: var(--pin-text);
-  border: 1px solid var(--pin-border);
-  border-radius: var(--pin-radius-sm);
-  padding: 13px 17px;
-  min-height: 50px;
-  cursor: pointer;
-  box-shadow: var(--pin-shadow-sm);
-  transition: transform .16s ease, background .16s ease, border-color .16s ease;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
 }
 
 .nav-card:hover {
-  transform: translateY(-1px);
-  background: rgba(255,255,255,.09);
-  border-color: rgba(255,189,34,.34);
+  transform: translateY(-3px);
+  border-color: rgba(201, 154, 62, 0.35);
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.10),
+      rgba(255, 255, 255, 0.035)
+    );
 }
 
-.nav-card:active { transform: scale(.98); }
-.nav-card:disabled { opacity: .45; cursor: not-allowed; transform: none; }
-
-.primary-button {
-  width: 100%;
-  min-height: 56px;
-  padding: 14px 20px;
-  border: 1px solid var(--pin-gold);
-  border-radius: 15px;
-  background: linear-gradient(180deg, var(--pin-gold-bright), var(--pin-gold));
-  color: #111;
-  font-size: 16px;
-  font-weight: 850;
-  cursor: pointer;
-  box-shadow: 0 9px 28px rgba(0,0,0,.28), 0 0 22px rgba(255,189,34,.10);
-  transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
+.nav-card:active {
+  transform: scale(0.97);
 }
 
-.primary-button:hover {
-  transform: translateY(-2px);
-  filter: brightness(1.06);
-  box-shadow: 0 13px 32px rgba(0,0,0,.34), 0 0 30px rgba(255,189,34,.16);
+.nav-card svg {
+  color: #d4a94f;
 }
 
-.primary-button:active { transform: scale(.985); }
-.primary-button:disabled { opacity: .45; filter: none; transform: none; box-shadow: none; }
-
-.winner-button {
-  width: 100%;
-  min-height: 62px;
-  padding: 15px 18px;
-  border: 1px solid rgba(255,255,255,.15);
-  border-radius: 16px;
-  background: linear-gradient(145deg, rgba(255,255,255,.095), rgba(255,255,255,.04));
-  color: var(--pin-text);
+.nav-card div {
   font-size: 17px;
-  font-weight: 850;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+/* =========================================================
+   ACTIVE TOURNAMENT CARD
+   ========================================================= */
+
+.player-card {
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 24px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.075),
+      rgba(255, 255, 255, 0.025)
+    );
+  padding: 22px;
+  box-shadow:
+    0 18px 45px rgba(0, 0, 0, 0.22),
+    inset 0 1px rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+
+.primary-button,
+.winner-button,
+.modern-button {
+  min-height: 52px;
+  border: 0;
+  border-radius: 17px;
+  padding: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  font-weight: 700;
   cursor: pointer;
-  box-shadow: var(--pin-shadow-sm);
-  transition: transform .15s ease, background .15s ease, border-color .15s ease;
+  color: #111;
+  background: linear-gradient(145deg, #f0c86a, #b88328);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.28),
+    inset 0 1px rgba(255, 255, 255, 0.38);
+  transition:
+    transform 0.15s ease,
+    filter 0.15s ease;
 }
 
-.winner-button:hover {
-  transform: translateY(-2px);
-  background: linear-gradient(145deg, rgba(255,189,34,.18), rgba(255,189,34,.055));
-  border-color: rgba(255,189,34,.52);
+.primary-button:hover,
+.winner-button:hover,
+.modern-button:hover {
+  filter: brightness(1.06);
 }
 
-.winner-button:active { transform: scale(.98); }
+.primary-button:active,
+.winner-button:active,
+.modern-button:active {
+  transform: scale(0.97);
+}
+
+.primary-button:disabled,
+.winner-button:disabled,
+.modern-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   SELECTION GRIDS
+   ========================================================= */
 
 .selection-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .selection-grid .nav-card,
-.selection-grid .selected-card { width: 100%; min-height: 54px; }
+.selection-grid .selected-card {
+  min-height: 78px;
+  padding: 16px;
+  border-radius: 18px;
+}
 
 .selected-card {
-  background: linear-gradient(145deg, rgba(255,189,34,.22), rgba(255,189,34,.07));
-  color: var(--pin-text);
-  border: 1px solid rgba(255,189,34,.72);
-  border-radius: var(--pin-radius-sm);
-  padding: 13px 17px;
-  min-height: 54px;
+  min-height: 78px;
+  border: 1px solid rgba(240, 200, 106, 0.65);
+  border-radius: 18px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(240, 200, 106, 0.20),
+      rgba(240, 200, 106, 0.07)
+    );
+  color: #f8e2a8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font-weight: 700;
   cursor: pointer;
-  font-weight: 800;
-  box-shadow: 0 0 25px rgba(255,189,34,.07);
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.2),
+    inset 0 1px rgba(255, 255, 255, 0.06);
 }
 
-/* ---------------- FORMS ---------------- */
+/* =========================================================
+   FORM ELEMENTS
+   ========================================================= */
 
-input, select, textarea {
-  width: 100%;
-  max-width: 100%;
-  padding: 14px 15px;
-  border: 1px solid var(--pin-border);
-  border-radius: var(--pin-radius-sm);
-  background: rgba(255,255,255,.055);
-  color: var(--pin-text);
+input,
+select,
+textarea {
+  color: #f5f5f7;
+  background: rgba(255, 255, 255, 0.065);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 15px;
   outline: none;
-  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
 
-input::placeholder, textarea::placeholder { color: var(--pin-text-muted); }
-
-input:hover, select:hover, textarea:hover { background: rgba(255,255,255,.075); }
-
-input:focus, select:focus, textarea:focus {
-  border-color: rgba(255,189,34,.65);
-  background: rgba(255,255,255,.075);
-  box-shadow: 0 0 0 4px rgba(255,189,34,.08);
+input::placeholder,
+textarea::placeholder {
+  color: rgba(245, 245, 247, 0.40);
 }
 
-option { background: #151820; color: var(--pin-text); }
-
-/* ---------------- TABLES ---------------- */
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  color: var(--pin-text);
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: rgba(240, 200, 106, 0.62);
+  box-shadow: 0 0 0 3px rgba(240, 200, 106, 0.08);
 }
 
-thead { background: rgba(255,255,255,.055); }
+/* =========================================================
+   IPHONE-STYLE PLAYERS
+   ========================================================= */
 
-th {
-  padding: 13px 12px;
-  border-bottom: 1px solid var(--pin-border);
-  color: var(--pin-text-secondary);
-  font-size: 12px;
+.players-page {
+  max-width: 1120px;
+  padding-bottom: 120px;
+}
+
+.players-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.players-topbar h2 {
+  margin: 0;
+  font-size: clamp(34px, 6vw, 46px);
+  letter-spacing: -0.055em;
+}
+
+.players-topbar p {
+  margin: 6px 0 0;
+  font-size: 15px;
+  color: rgba(245, 245, 247, 0.48);
+}
+
+.players-add-button {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #111;
+  background: linear-gradient(145deg, #f3cb6c, #b98228);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.38),
+    inset 0 1px rgba(255, 255, 255, 0.42);
+  transition: transform 0.16s ease;
+}
+
+.players-add-button:active {
+  transform: scale(0.91);
+}
+
+/* Player grid */
+
+.players-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+
+/* Player card */
+
+.iphone-player-card {
+  position: relative;
+  min-width: 0;
+  padding: 24px 14px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 27px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.065),
+      rgba(255, 255, 255, 0.022)
+    );
+  text-align: center;
+  box-shadow:
+    0 18px 45px rgba(0, 0, 0, 0.25),
+    inset 0 1px rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.iphone-player-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(201, 154, 62, 0.28);
+}
+
+.iphone-player-card:active {
+  transform: scale(0.985);
+}
+
+/* =========================================================
+   PLAYER PHOTO
+   =========================================================
+
+   IMPORTANT:
+   This is intentionally ONE circle.
+
+   No:
+   - outer ring
+   - pseudo-element
+   - box-shadow
+   - wrapper background
+   - wrapper padding
+
+   The gold border belongs directly to the image.
+   ========================================================= */
+
+.player-photo-wrap {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  margin: 0 auto 16px;
+}
+
+.player-photo {
+  display: block;
+  width: 112px !important;
+  height: 112px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+
+  border: 0 !important;
+  border-radius: 50% !important;
+
+  object-fit: cover !important;
+  object-position: center center !important;
+
+  box-shadow: none !important;
+  outline: 4px solid #c99a3e !important;
+  outline-offset: 0 !important;
+
+  box-sizing: border-box !important;
+}
+
+/* No-photo player */
+
+.player-photo-placeholder {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+
+  color: #f0c86a;
+  font-size: 42px;
   font-weight: 750;
-  text-transform: uppercase;
-  letter-spacing: .55px;
-  text-align: left;
+
+  background:
+    radial-gradient(
+      circle at 35% 25%,
+      #3a3a3d,
+      #17181b 70%
+    );
 }
 
-td {
-  padding: 14px 12px;
-  border-bottom: 1px solid rgba(255,255,255,.055);
+/* Pencil button */
+
+.player-edit-badge {
+  position: absolute;
+  right: -3px;
+  bottom: 1px;
+  z-index: 5;
+
+  width: 34px;
+  height: 34px;
+
+  border-radius: 50%;
+  border: 3px solid #17181b;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #f1c761;
+  color: #111;
+
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.30);
 }
 
-/* ---------------- BOTTOM NAV ---------------- */
+/* Player name */
+
+.iphone-player-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  font-size: 19px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+/* Delete */
+
+.player-delete-button {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+
+  width: 34px;
+  height: 34px;
+
+  border: 0;
+  border-radius: 50%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: rgba(255, 255, 255, 0.70);
+  background: rgba(0, 0, 0, 0.25);
+
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.player-delete-button:hover {
+  color: #fff;
+  background: rgba(255, 70, 70, 0.18);
+}
+
+/* =========================================================
+   EMPTY PLAYERS
+   ========================================================= */
+
+.players-empty {
+  min-height: 390px;
+  padding: 45px 25px;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 30px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.055),
+      rgba(255, 255, 255, 0.018)
+    );
+}
+
+.players-empty-icon {
+  width: 78px;
+  height: 78px;
+  margin-bottom: 18px;
+
+  border-radius: 50%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #efc566;
+  background: rgba(239, 197, 102, 0.09);
+}
+
+.players-empty h3 {
+  margin: 0;
+  font-size: 25px;
+}
+
+.players-empty p {
+  max-width: 330px;
+  margin: 9px 0 25px;
+  color: rgba(245, 245, 247, 0.48);
+}
+
+.players-empty-button {
+  min-height: 50px;
+  padding: 0 20px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  border: 0;
+  border-radius: 16px;
+
+  color: #111;
+  font-weight: 700;
+
+  background: linear-gradient(145deg, #f0c86a, #b88328);
+
+  cursor: pointer;
+}
+
+/* =========================================================
+   PLAYER MODAL
+   ========================================================= */
+
+.player-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+
+  padding: 18px;
+
+  background: rgba(0, 0, 0, 0.76);
+
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+}
+
+.player-modal {
+  width: min(520px, 100%);
+
+  padding: 25px;
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 30px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #1c1d20,
+      #111214
+    );
+
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.70);
+}
+
+.player-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+
+  margin-bottom: 24px;
+}
+
+.player-modal-header h3 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.045em;
+}
+
+.player-modal-header p {
+  margin: 5px 0 0;
+  color: rgba(245, 245, 247, 0.48);
+  font-size: 14px;
+}
+
+.modal-close-button {
+  width: 38px;
+  height: 38px;
+
+  border: 0;
+  border-radius: 50%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.075);
+
+  cursor: pointer;
+}
+
+/* Photo picker */
+
+.photo-picker {
+  position: relative;
+
+  width: 145px;
+  height: 145px;
+
+  margin: 0 auto 24px;
+  padding: 0;
+
+  border: 3px solid #c99a3e;
+  border-radius: 50%;
+
+  overflow: hidden;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+
+  color: #edc567;
+  background:
+    radial-gradient(
+      circle at 35% 25%,
+      #35363a,
+      #151619 72%
+    );
+
+  cursor: pointer;
+
+  box-shadow: none;
+}
+
+.photo-picker img {
+  display: block;
+
+  width: 100%;
+  height: 100%;
+
+  margin: 0;
+  padding: 0;
+
+  border: 0;
+
+  border-radius: 50%;
+
+  object-fit: cover;
+  object-position: center;
+
+  box-shadow: none;
+}
+
+/* Player name field */
+
+.player-name-input {
+  width: 100%;
+  min-height: 55px;
+
+  padding: 0 17px;
+
+  margin-bottom: 14px;
+
+  font-size: 17px;
+}
+
+/* Save */
+
+.save-player-button {
+  width: 100%;
+  min-height: 54px;
+
+  border: 0;
+  border-radius: 17px;
+
+  color: #111;
+  font-size: 16px;
+  font-weight: 750;
+
+  background: linear-gradient(145deg, #f0c86a, #b88328);
+
+  cursor: pointer;
+
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.28),
+    inset 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.save-player-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   LOCATION / MACHINE / TOURNAMENT GENERIC CARDS
+   ========================================================= */
+
+.card,
+.machine-card,
+.location-card,
+.tournament-card {
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 23px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.065),
+      rgba(255, 255, 255, 0.022)
+    );
+  box-shadow:
+    0 15px 40px rgba(0, 0, 0, 0.22),
+    inset 0 1px rgba(255, 255, 255, 0.025);
+}
+
+/* =========================================================
+   BOTTOM NAVIGATION
+   ========================================================= */
 
 .bottom-nav {
   position: fixed;
   left: 50%;
-  bottom: max(12px, env(safe-area-inset-bottom));
-  z-index: 1000;
-  width: min(230px, calc(100% - 32px));
-  height: 64px;
+  bottom: 16px;
+  z-index: 500;
+
+  width: min(92vw, 110px);
+  height: 58px;
+
   transform: translateX(-50%);
+
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 5px;
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 22px;
-  background: rgba(14,16,21,.88);
-  box-shadow: 0 15px 45px rgba(0,0,0,.45), 0 0 25px rgba(255,189,34,.04);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+
+  padding: 7px;
+
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 30px;
+
+  background: rgba(25, 26, 29, 0.88);
+
+  box-shadow:
+    0 18px 45px rgba(0, 0, 0, 0.55),
+    inset 0 1px rgba(255, 255, 255, 0.04);
+
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
-.bottom-nav button { display: none; }
+.bottom-nav button {
+  width: 46px;
+  height: 46px;
 
-.bottom-nav button:first-child {
+  border: 0;
+  border-radius: 50%;
+
   display: flex;
-  width: 100%;
-  height: 54px;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  background: linear-gradient(145deg, rgba(255,189,34,.15), rgba(255,189,34,.055));
-  color: var(--pin-gold-bright);
-  border: 1px solid rgba(255,189,34,.22);
-  border-radius: 17px;
-  font-weight: 800;
+
+  color: #f0c86a;
+  background: rgba(240, 200, 106, 0.10);
+
   cursor: pointer;
+
+  transition: transform 0.15s ease;
 }
 
-.bottom-nav button:first-child::after {
-  content: "Home";
-  font-size: 15px;
+/* Hide every bottom navigation item except Home */
+
+.bottom-nav button:not(:first-child) {
+  display: none;
 }
 
-.bottom-nav button:first-child svg {
-  width: 23px;
-  height: 23px;
+.bottom-nav button:active {
+  transform: scale(0.90);
 }
 
-/* ---------------- TABLET ---------------- */
+/* =========================================================
+   TABLET
+   ========================================================= */
 
 @media (max-width: 900px) {
   .page {
-    padding-left: 20px;
-    padding-right: 20px;
+    padding-left: 22px;
+    padding-right: 22px;
   }
 
-  .page > .home-grid {
+  .home-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
   }
 
-  .page > .home-grid .nav-card {
-    height: 155px;
-    min-height: 155px;
-    max-height: 155px;
+  .players-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .selection-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-/* ---------------- PHONE ---------------- */
+/* =========================================================
+   PHONE
+   ========================================================= */
 
 @media (max-width: 600px) {
-  .app { padding-bottom: 88px; }
-
   .page {
-    padding: 24px 14px 105px;
+    min-height: calc(100dvh - 80px);
+    padding: 28px 16px 105px;
   }
 
-  .page > .home-grid {
+  /* Home */
+
+  .home-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding-top: 142px;
+  }
+
+  .page > .home-grid::before {
+    width: min(330px, 88vw);
+    height: 120px;
+  }
+
+  .nav-card {
+    min-height: 130px;
+    border-radius: 21px;
+    padding: 17px 10px;
     gap: 10px;
   }
 
-  .page > .home-grid::before {
-    width: 96%;
-    margin: -2px auto 8px;
+  .nav-card svg {
+    width: 31px;
+    height: 31px;
   }
 
-  .page > .home-grid .nav-card {
-    height: 130px;
-    min-height: 130px;
-    max-height: 130px;
-    border-radius: 18px;
-    padding: 14px 34px 14px 8px;
+  .nav-card div {
     font-size: 15px;
+    text-align: center;
   }
 
-  .page > .home-grid .nav-card svg {
-    width: 38px;
-    height: 38px;
+  /* Players */
+
+  .players-page {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
-  .page > .home-grid .nav-card::after {
-    right: 8px;
-    bottom: 8px;
-    width: 28px;
-    height: 28px;
+  .players-topbar {
+    margin-bottom: 22px;
   }
 
-  .player-card { padding: 17px; border-radius: 18px; }
-  .selection-grid { grid-template-columns: 1fr; gap: 9px; }
-  input, select, textarea { font-size: 16px; }
-  table { font-size: 14px; }
-  th { padding: 11px 8px; font-size: 11px; }
-  td { padding: 12px 8px; }
+  .players-topbar h2 {
+    font-size: 34px;
+  }
+
+  .players-add-button {
+    width: 50px;
+    height: 50px;
+    flex-basis: 50px;
+  }
+
+  .players-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .iphone-player-card {
+    padding: 19px 9px 18px;
+    border-radius: 22px;
+  }
+
+  .player-photo-wrap {
+    width: 92px;
+    height: 92px;
+    margin-bottom: 13px;
+  }
+
+  .player-photo {
+    width: 92px !important;
+    height: 92px !important;
+    border-width: 3px !important;
+  }
+
+  .player-edit-badge {
+    width: 29px;
+    height: 29px;
+    right: -3px;
+    bottom: 0;
+    border-width: 2px;
+  }
+
+  .iphone-player-name {
+    font-size: 17px;
+  }
+
+  .player-delete-button {
+    width: 31px;
+    height: 31px;
+    top: 10px;
+    right: 10px;
+  }
+
+  /* Modal */
+
+  .player-modal-backdrop {
+    padding: 0;
+  }
+
+  .player-modal {
+    width: 100%;
+    padding: 22px 18px 30px;
+    border-radius: 30px 30px 0 0;
+  }
+
+  .photo-picker {
+    width: 135px;
+    height: 135px;
+  }
+
+  /* Generic selection */
+
+  .selection-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
 }
 
-/* ---------------- TV / LARGE CAST ---------------- */
+/* =========================================================
+   SMALL PHONES
+   ========================================================= */
 
-@media (min-width: 1400px) and (min-height: 700px) {
+@media (max-width: 390px) {
+  .home-grid {
+    gap: 10px;
+  }
+
+  .nav-card {
+    min-height: 120px;
+  }
+
+  .player-photo-wrap {
+    width: 84px;
+    height: 84px;
+  }
+
+  .player-photo {
+    width: 84px !important;
+    height: 84px !important;
+  }
+
+  .iphone-player-card {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+}
+
+/* =========================================================
+   LARGE SCREENS / TV
+   ========================================================= */
+
+@media (min-width: 1400px) {
   .page {
-    width: min(1500px, 92vw);
-    padding-top: 48px;
+    max-width: 1400px;
+    padding-top: 55px;
   }
 
-  .page > .home-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 20px;
+  .home-grid {
+    gap: 22px;
+    padding-top: 205px;
   }
 
-  .page > .home-grid::before {
-    width: min(850px, 72%);
-    margin-bottom: 12px;
+  .nav-card {
+    min-height: 190px;
+    border-radius: 30px;
   }
 
-  .page > .home-grid .nav-card {
-    height: 215px;
-    min-height: 215px;
-    max-height: 215px;
-    font-size: 21px;
+  .nav-card svg {
+    width: 42px;
+    height: 42px;
   }
 
-  .page > .home-grid .nav-card svg {
-    width: 58px;
-    height: 58px;
+  .nav-card div {
+    font-size: 20px;
   }
 }
 
-@media (orientation: landscape) and (min-width: 900px) {
-  .page > .home-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-/* Accessibility */
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--pin-gold);
-  outline-offset: 3px;
-}
+/* =========================================================
+   REDUCED MOTION
+   ========================================================= */
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    transition-duration: .01ms !important;
-    animation-duration: .01ms !important;
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+@media (max-width: 600px) {
+  .player-photo {
+    width: 92px !important;
+    height: 92px !important;
+    border: 0 !important;
+    outline: 3px solid #c99a3e !important;
+  }
+}
+/* PLAYER PHOTO - CLEAN FINAL VERSION */
+
+.players-page .player-photo-wrap {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  margin: 0 auto 16px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  overflow: visible;
+}
+
+.players-page .player-photo {
+  position: absolute;
+  inset: 0;
+  display: block;
+
+  width: 112px !important;
+  height: 112px !important;
+
+  margin: 0 !important;
+  padding: 0 !important;
+
+  border: 0 !important;
+  border-radius: 50% !important;
+
+  object-fit: cover !important;
+  object-position: center !important;
+
+  background: transparent !important;
+  box-shadow: 0 0 0 4px #c99a3e !important;
+}
+
+.players-page .player-photo-placeholder {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  color: #f0c86a;
+  background: #222 !important;
+}
+
+.players-page .player-edit-badge {
+  border: 3px solid #17181b;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .players-page .player-photo-wrap {
+    width: 92px;
+    height: 92px;
+  }
+
+  .players-page .player-photo {
+    width: 92px !important;
+    height: 92px !important;
+    box-shadow: 0 0 0 3px #c99a3e !important;
+  }
+}
+/* =========================================================
+   PINHEADS — REMAINING PAGE POLISH
+   Machines / Locations / Stats / Tournament / History
+   ========================================================= */
+
+/* ---------- Standard page headers ---------- */
+
+.page > h2 {
+  margin: 0 0 28px;
+  font-size: clamp(34px, 5vw, 46px);
+  font-weight: 750;
+  letter-spacing: -0.05em;
+}
+
+.page > h3 {
+  margin: 32px 0 13px;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgba(240, 200, 106, 0.82);
+}
+
+/* ---------- General glass cards ---------- */
+
+.page .player-card {
+  position: relative;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 20px;
+
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 23px;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255,255,255,0.07),
+      rgba(255,255,255,0.025)
+    );
+
+  box-shadow:
+    0 16px 40px rgba(0,0,0,0.24),
+    inset 0 1px rgba(255,255,255,0.035);
+
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+/* Do NOT alter the new Players cards */
+
+.players-page .iphone-player-card {
+  margin-bottom: 0;
+}
+
+/* ---------- Forms ---------- */
+
+.page input:not(.player-name-input),
+.page select,
+.page textarea {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+
+  color: #f5f5f7;
+  background: rgba(255,255,255,0.06);
+
+  font-size: 16px;
+  outline: none;
+
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.page select {
+  cursor: pointer;
+}
+
+.page input:focus,
+.page select:focus,
+.page textarea:focus {
+  border-color: rgba(240,200,106,0.62);
+  box-shadow: 0 0 0 4px rgba(240,200,106,0.07);
+}
+
+/* ---------- Primary buttons ---------- */
+
+.page .primary-button {
+  min-height: 54px;
+  padding: 0 22px;
+
+  border: 0;
+  border-radius: 17px;
+
+  font-size: 16px;
+  font-weight: 750;
+
+  color: #111;
+  background:
+    linear-gradient(145deg,#f3cc70,#b98529);
+
+  box-shadow:
+    0 10px 28px rgba(0,0,0,0.28),
+    inset 0 1px rgba(255,255,255,0.38);
+
+  cursor: pointer;
+}
+
+.page .primary-button:active {
+  transform: scale(.98);
+}
+
+/* ---------- Selection tiles ---------- */
+
+.page .selection-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(3,minmax(0,1fr));
+  gap: 12px;
+}
+
+.page .selection-grid .nav-card,
+.page .selection-grid .selected-card {
+  min-height: 76px;
+  padding: 14px 16px;
+  border-radius: 19px;
+
+  font-size: 15px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.page .selection-grid .nav-card {
+  border: 1px solid rgba(255,255,255,.08);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255,255,255,.065),
+      rgba(255,255,255,.025)
+    );
+}
+
+.page .selection-grid .selected-card {
+  border: 1px solid rgba(240,200,106,.58);
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(240,200,106,.20),
+      rgba(240,200,106,.07)
+    );
+
+  color: #f5d889;
+}
+
+/* ---------- Statistics ---------- */
+
+/* First selection grid on Statistics becomes
+   a segmented iPhone-style control */
+
+.page .selection-grid + h3 {
+  margin-top: 30px;
+}
+
+.page .player-card strong {
+  color: #f5f5f7;
+}
+
+/* Stat values and text breathe more */
+
+.page .player-card p {
+  margin: 8px 0;
+  color: rgba(245,245,247,.68);
+}
+
+/* ---------- Tournament ---------- */
+
+.page .winner-button {
+  width: 100%;
+  min-height: 58px;
+
+  border: 1px solid rgba(240,200,106,.38);
+  border-radius: 18px;
+
+  color: #f7d985;
+
+  background:
+    linear-gradient(
+      145deg,
+      rgba(240,200,106,.17),
+      rgba(240,200,106,.06)
+    );
+
+  font-size: 16px;
+  font-weight: 750;
+
+  cursor: pointer;
+}
+
+.page .winner-button:active {
+  transform: scale(.98);
+}
+
+/* Make tournament information easier to scan */
+
+.page ol,
+.page ul {
+  padding-left: 24px;
+}
+
+.page li {
+  margin: 9px 0;
+  color: rgba(245,245,247,.82);
+}
+
+/* ---------- Status / champion treatments ---------- */
+
+.page .player-card h3 {
+  margin-top: 0;
+}
+
+/* ---------- Buttons generally ---------- */
+
+.page button {
+  touch-action: manipulation;
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-width: 700px) {
+
+  .page .selection-grid {
+    grid-template-columns:
+      repeat(2,minmax(0,1fr));
+  }
+
+  .page > h2 {
+    font-size: 34px;
+    margin-bottom: 22px;
+  }
+
+  .page > h3 {
+    margin-top: 27px;
+  }
+
+  .page .player-card {
+    padding: 18px;
+    border-radius: 21px;
+  }
+
+  .page .selection-grid .nav-card,
+  .page .selection-grid .selected-card {
+    min-height: 68px;
+    border-radius: 17px;
+  }
+
+  .page .primary-button {
+    width: 100%;
+  }
+}
+
+/* ---------- Very small iPhones ---------- */
+
+@media (max-width: 390px) {
+
+  .page .selection-grid {
+    gap: 9px;
+  }
+
+  .page .selection-grid .nav-card,
+  .page .selection-grid .selected-card {
+    padding: 12px 8px;
+    font-size: 14px;
   }
 }

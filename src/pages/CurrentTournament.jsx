@@ -1,19 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { OfflineBanner } from "../lib/offlineStatus";
-import {
-  clearTournamentLocal,
-  getById,
-  loadTournamentBundle,
-  newId,
-  queueOperation,
-  refreshTournamentFromServer,
-  saveTournamentBundle,
-  syncQueue,
-} from "../lib/offlineStore";
-
-function hydrateMatches(bundle) {
-  return bundle?.matches || [];
-}
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function CurrentTournament() {
   const [tournament, setTournament] = useState(null);
@@ -26,387 +12,1138 @@ export default function CurrentTournament() {
   const [playoffStarting, setPlayoffStarting] = useState(false);
   const [error, setError] = useState("");
 
-  async function applyBundle(bundle) {
-    if (!bundle?.tournament) return false;
-    setTournament(bundle.tournament);
-    setMatches(hydrateMatches(bundle));
-
-    const rounds = [...new Set((bundle.matches || []).map((match) => Number(match.round_number)))].sort((a, b) => a - b);
-    const unfinished = rounds.find((round) => (bundle.matches || []).filter((match) => Number(match.round_number) === round).some((match) => match.status !== "completed"));
-    setCurrentRound(unfinished || rounds[rounds.length - 1] || 1);
-    return true;
-  }
+  useEffect(() => {
+    loadTournament();
+  }, []);
 
   async function loadTournament() {
     setLoading(true);
     setError("");
+
     try {
-      const saved = JSON.parse(localStorage.getItem("currentTournament") || "null");
-      if (!saved?.id) throw new Error("No active tournament found.");
+      const savedTournament = JSON.parse(
+        localStorage.getItem("currentTournament")
+      );
 
-      let bundle = await loadTournamentBundle(saved.id);
-      if (bundle) await applyBundle(bundle);
+      if (!savedTournament?.id) {
+        throw new Error("No active tournament found.");
+      }
 
-      if (navigator.onLine) {
-        try {
-          await syncQueue();
-          const fresh = await refreshTournamentFromServer(saved.id);
-          if (fresh) await applyBundle(fresh);
-        } catch (onlineError) {
-          if (!bundle) throw onlineError;
-          console.warn("Using local tournament data while offline/syncing:", onlineError);
+      const { data: tournamentRows, error: tournamentError } =
+        await supabase
+          .from("tournaments")
+          .select("*")
+          .eq("id", savedTournament.id);
+
+      if (tournamentError) {
+        throw tournamentError;
+      }
+
+      if (!tournamentRows || tournamentRows.length !== 1) {
+        throw new Error(
+          `Expected exactly 1 tournament, but found ${
+            tournamentRows?.length || 0
+          }.`
+        );
+      }
+
+      const tournamentRow = tournamentRows[0];
+
+      const { data: matchData, error: matchError } =
+        await supabase
+          .from("tournament_matches")
+          .select(`
+            id,
+            round_number,
+            status,
+            machine_id,
+            machines (
+              id,
+              name
+            ),
+            tournament_match_players (
+              id,
+              player_id,
+              position,
+              points,
+              players (
+                id,
+                first_name
+              )
+            )
+          `)
+          .eq("tournament_id", savedTournament.id)
+          .order("round_number", {
+            ascending: true,
+          });
+
+      if (matchError) {
+        throw matchError;
+      }
+
+      setTournament(tournamentRow);
+      setMatches(matchData || []);
+
+      const groupedRounds = {};
+
+      (matchData || []).forEach((match) => {
+        if (!groupedRounds[match.round_number]) {
+          groupedRounds[match.round_number] = [];
         }
-      }
 
-      if (!bundle && !navigator.onLine) {
-        throw new Error("This tournament is not cached on this device. Connect to the internet once to download it.");
+        groupedRounds[match.round_number].push(match);
+      });
+
+      const roundNumbers = Object.keys(groupedRounds)
+        .map(Number)
+        .sort((a, b) => a - b);
+
+      const unfinishedRound = roundNumbers.find(
+        (roundNumber) =>
+          groupedRounds[roundNumber].some(
+            (match) => match.status !== "completed"
+          )
+      );
+
+      if (unfinishedRound) {
+        setCurrentRound(unfinishedRound);
+      } else if (roundNumbers.length > 0) {
+        setCurrentRound(
+          roundNumbers[roundNumbers.length - 1]
+        );
       }
-    } catch (loadError) {
-      setError(loadError.message || "Unable to load tournament.");
+    } catch (err) {
+      console.error("Unable to load tournament:", err);
+
+      setError(
+        err.message || "Unable to load tournament."
+      );
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    loadTournament();
-  }, []);
+  function getRoundMatches(roundNumber) {
+    return matches.filter(
+      (match) => match.round_number === roundNumber
+    );
+  }
 
-  const roundNumbers = useMemo(
-    () => [...new Set(matches.map((match) => Number(match.round_number)))].sort((a, b) => a - b),
-    [matches]
-  );
-
-  const regularRounds = useMemo(
-    () => roundNumbers.filter((round) => matches.some((match) => Number(match.round_number) === round && (match.match_type || "regular") === "regular")),
-    [matches, roundNumbers]
-  );
-
-  function getRoundMatches(round) {
-    return matches.filter((match) => Number(match.round_number) === Number(round));
+  function isMatchCompleted(match) {
+    return match.status === "completed";
   }
 
   function getWinner(match) {
-    return (match.tournament_match_players || []).find((player) => Number(player.points) === 1) || null;
-  }
+    const players =
+      match.tournament_match_players || [];
 
-  function getRegularStandings() {
-    const standings = {};
-    matches.filter((match) => (match.match_type || "regular") === "regular").forEach((match) => {
-      (match.tournament_match_players || []).forEach((row) => {
-        if (!standings[row.player_id]) {
-          standings[row.player_id] = {
-            player_id: row.player_id,
-            player_name: row.players?.first_name || "Unknown Player",
-            points: 0,
-            games: 0,
-          };
-        }
-        if (match.status === "completed") {
-          standings[row.player_id].points += Number(row.points || 0);
-          standings[row.player_id].games += 1;
-        }
-      });
-    });
-    return Object.values(standings).sort((a, b) => b.points - a.points || a.player_name.localeCompare(b.player_name));
-  }
-
-  function getFinalTieLeaders() {
-    const standings = getRegularStandings();
-    if (!standings.length) return [];
-    return standings.filter((player) => player.points === standings[0].points);
-  }
-
-  function getPlayoffMatch() {
-    return matches.find((match) => (match.match_type || "regular") === "playoff") || null;
-  }
-
-  function getChampion() {
-    const playoff = getPlayoffMatch();
-    if (playoff?.status === "completed") return getWinner(playoff);
-    const leaders = getFinalTieLeaders();
-    return leaders.length === 1 ? leaders[0] : null;
-  }
-
-  async function persistLocal(nextMatches = matches, nextTournament = tournament) {
-    const matchPlayers = nextMatches.flatMap((match) =>
-      (match.tournament_match_players || []).map((row) => ({
-        id: row.id,
-        match_id: row.match_id || match.id,
-        player_id: row.player_id,
-        position: row.position ?? null,
-        points: Number(row.points || 0),
-        created_at: row.created_at || new Date().toISOString(),
-      }))
+    return players.find(
+      (player) => player.points === 1
     );
+  }
 
-    await saveTournamentBundle({
-      tournament: nextTournament,
-      tournamentPlayers: [],
-      matches: nextMatches.map((match) => ({
-        id: match.id,
-        tournament_id: match.tournament_id,
-        round_number: Number(match.round_number),
-        machine_id: match.machine_id || null,
-        status: match.status,
-        match_type: match.match_type || "regular",
-        version: Number(match.version || 1),
-        created_at: match.created_at || new Date().toISOString(),
-      })),
-      matchPlayers,
-    });
+  function startEditing(matchId) {
+    setEditingMatchId(matchId);
   }
 
   async function selectWinner(match, winnerPlayerId) {
-    if (saving) return;
-    const players = match.tournament_match_players || [];
-    if (players.length !== 2) return alert("This game does not have exactly two players.");
+    if (saving) {
+      return;
+    }
 
-    const winner = players.find((row) => row.player_id === winnerPlayerId);
-    const loser = players.find((row) => row.player_id !== winnerPlayerId);
-    if (!winner || !loser) return alert("Unable to identify both players.");
+    const matchPlayers =
+      match.tournament_match_players || [];
 
-    const expectedVersion = Number(match.version || 1);
-    const nextVersion = expectedVersion + 1;
-    const updatedMatches = matches.map((row) => row.id !== match.id ? row : {
-      ...row,
-      status: "completed",
-      version: nextVersion,
-      tournament_match_players: row.tournament_match_players.map((player) => ({
-        ...player,
-        points: player.player_id === winnerPlayerId ? 1 : 0,
-        position: player.player_id === winnerPlayerId ? 1 : 2,
-      })),
-    });
+    if (matchPlayers.length !== 2) {
+      alert(
+        "This game does not have exactly two players."
+      );
+      return;
+    }
+
+    const winner = matchPlayers.find(
+      (player) => player.player_id === winnerPlayerId
+    );
+
+    if (!winner) {
+      alert("Unable to find the selected winner.");
+      return;
+    }
+
+    const loser = matchPlayers.find(
+      (player) => player.player_id !== winnerPlayerId
+    );
+
+    if (!loser) {
+      alert("Unable to find the losing player.");
+      return;
+    }
 
     setSaving(true);
+
     try {
-      setMatches(updatedMatches);
-      await persistLocal(updatedMatches);
-      await queueOperation("match_result", {
-        match_id: match.id,
-        winner_player_id: winnerPlayerId,
-        expected_version: expectedVersion,
-      });
+      const { error: winnerError } = await supabase
+        .from("tournament_match_players")
+        .update({
+          points: 1,
+          position: 1,
+        })
+        .eq("id", winner.id);
+
+      if (winnerError) {
+        throw winnerError;
+      }
+
+      const { error: loserError } = await supabase
+        .from("tournament_match_players")
+        .update({
+          points: 0,
+          position: 2,
+        })
+        .eq("id", loser.id);
+
+      if (loserError) {
+        throw loserError;
+      }
+
+      const { error: matchError } = await supabase
+        .from("tournament_matches")
+        .update({
+          status: "completed",
+        })
+        .eq("id", match.id);
+
+      if (matchError) {
+        throw matchError;
+      }
+
+      setMatches((previousMatches) =>
+        previousMatches.map((existingMatch) => {
+          if (existingMatch.id !== match.id) {
+            return existingMatch;
+          }
+
+          return {
+            ...existingMatch,
+            status: "completed",
+            tournament_match_players:
+              existingMatch.tournament_match_players.map(
+                (matchPlayer) => ({
+                  ...matchPlayer,
+                  points:
+                    matchPlayer.player_id ===
+                    winnerPlayerId
+                      ? 1
+                      : 0,
+                  position:
+                    matchPlayer.player_id ===
+                    winnerPlayerId
+                      ? 1
+                      : 2,
+                })
+              ),
+          };
+        })
+      );
+
       setEditingMatchId(null);
-      if (navigator.onLine) await syncQueue();
-    } catch (error) {
-      setMatches(matches);
-      alert(error.message || "Unable to save the result locally.");
+    } catch (err) {
+      console.error(
+        "Unable to record game result:",
+        err
+      );
+
+      alert(
+        err.message ||
+          "Unable to record the game result."
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  async function undoResult(match) {
-    if (saving) return;
-    if (match.status !== "completed") return;
-    if (!window.confirm("Undo this game result and return the game to pending?")) return;
+  function proceedToNextRound() {
+  const currentMatches =
+    getRoundMatches(currentRound);
 
-    const expectedVersion = Number(match.version || 1);
-    const updatedMatches = matches.map((row) => row.id !== match.id ? row : {
-      ...row,
-      status: "pending",
-      version: expectedVersion + 1,
-      tournament_match_players: row.tournament_match_players.map((player) => ({ ...player, points: 0, position: null })),
+  const allCompleted = currentMatches.every(
+    (match) => match.status === "completed"
+  );
+
+  if (!allCompleted) {
+    alert(
+      "Complete every game in this round before proceeding."
+    );
+    return;
+  }
+
+  const lastRound =
+    Math.max(
+      ...matches.map((match) => match.round_number)
+    );
+
+  // Do not advance beyond the final round.
+  if (currentRound >= lastRound) {
+    return;
+  }
+
+  setCurrentRound(currentRound + 1);
+}
+
+  function getTournamentStandings() {
+    const standings = {};
+
+    matches.forEach((match) => {
+      (match.tournament_match_players || []).forEach((matchPlayer) => {
+        const playerId = matchPlayer.player_id;
+
+        if (!standings[playerId]) {
+          standings[playerId] = {
+            player_id: playerId,
+            player_name:
+              matchPlayer.players?.first_name ||
+              "Unknown Player",
+            points: 0,
+          };
+        }
+
+        if (match.status === "completed") {
+          standings[playerId].points +=
+            Number(matchPlayer.points || 0);
+        }
+      });
     });
 
-    setSaving(true);
-    try {
-      setMatches(updatedMatches);
-      await persistLocal(updatedMatches);
-      await queueOperation("undo_match_result", { match_id: match.id, expected_version: expectedVersion });
-      setEditingMatchId(null);
-      if (navigator.onLine) await syncQueue();
-    } catch (error) {
-      setMatches(matches);
-      alert(error.message || "Unable to undo this result.");
-    } finally {
-      setSaving(false);
+    return Object.values(standings).sort(
+      (a, b) => b.points - a.points
+    );
+  }
+
+  function getFinalStandings() {
+    return getTournamentStandings().filter(
+      (player) =>
+        matches.some((match) =>
+          (match.tournament_match_players || []).some(
+            (matchPlayer) =>
+              matchPlayer.player_id === player.player_id
+          )
+        )
+    );
+  }
+
+  function getFinalTieLeaders() {
+    const baseRoundLimit = Number(
+      tournament?.total_rounds || 0
+    );
+
+    const standings = {};
+
+    matches
+      .filter(
+        (match) => match.round_number <= baseRoundLimit
+      )
+      .forEach((match) => {
+        (match.tournament_match_players || []).forEach(
+          (matchPlayer) => {
+            if (!standings[matchPlayer.player_id]) {
+              standings[matchPlayer.player_id] = {
+                player_id: matchPlayer.player_id,
+                player_name:
+                  matchPlayer.players?.first_name ||
+                  "Unknown Player",
+                points: 0,
+              };
+            }
+
+            if (match.status === "completed") {
+              standings[matchPlayer.player_id].points +=
+                Number(matchPlayer.points || 0);
+            }
+          }
+        );
+      });
+
+    const rows = Object.values(standings).sort(
+      (a, b) => b.points - a.points
+    );
+
+    if (rows.length === 0) {
+      return [];
     }
+
+    const topPoints = rows[0].points;
+
+    return rows.filter(
+      (player) => player.points === topPoints
+    );
+  }
+
+  function getPlayoffMatch() {
+    if (!matches.length) {
+      return null;
+    }
+
+    const highestRound = Math.max(
+      ...matches.map((match) => match.round_number)
+    );
+
+    const possiblePlayoff = matches.find(
+      (match) =>
+        match.round_number > highestRound - 1 &&
+        match.tournament_match_players?.length === 2 &&
+        match.status !== undefined
+    );
+
+    return possiblePlayoff || null;
+  }
+
+  function getOverallChampion() {
+    const standings = getTournamentStandings();
+
+    if (standings.length === 0) {
+      return null;
+    }
+
+    return standings[0];
   }
 
   async function startWinnerTakeAllPlayoff() {
-    if (saving || playoffStarting) return;
+    if (saving || playoffStarting) {
+      return;
+    }
+
     const leaders = getFinalTieLeaders();
-    if (leaders.length !== 2) return alert(leaders.length > 2 ? "There are 3 or more players tied for first. A multi-player playoff format is required." : "There is no two-player tie to resolve.");
-    if (getPlayoffMatch()) return setCurrentRound(getPlayoffMatch().round_number);
+
+    if (leaders.length !== 2) {
+      alert(
+        leaders.length > 2
+          ? "There are 3 or more players tied for first. A multi-player playoff format is required."
+          : "There is no two-player tie to resolve."
+      );
+      return;
+    }
+
+    const existingPlayoff = matches.find(
+      (match) =>
+        match.round_number > currentRound &&
+        match.tournament_match_players?.length === 2
+    );
+
+    if (existingPlayoff) {
+      setCurrentRound(existingPlayoff.round_number);
+      return;
+    }
 
     setPlayoffStarting(true);
+
     try {
-      const regularMachineIds = [...new Set(matches.filter((match) => (match.match_type || "regular") === "regular").map((match) => match.machine_id).filter(Boolean))];
-      if (!regularMachineIds.length) throw new Error("No tournament machines are available for the playoff.");
-      const machineId = regularMachineIds[Math.floor(Math.random() * regularMachineIds.length)];
-      const roundNumber = Math.max(...regularRounds, 0) + 1;
-      const now = new Date().toISOString();
-      const playoff = {
-        id: newId(),
-        tournament_id: tournament.id,
-        round_number: roundNumber,
-        machine_id: machineId,
-        status: "pending",
-        match_type: "playoff",
-        version: 1,
-        created_at: now,
-        tournament_match_players: leaders.map((leader) => ({
-          id: newId(),
-          match_id: "",
-          player_id: leader.player_id,
-          position: null,
-          points: 0,
-          created_at: now,
-          players: { id: leader.player_id, first_name: leader.player_name },
-        })),
+      const { data: locationMachineRows, error: locationMachineError } =
+        await supabase
+          .from("location_machines")
+          .select("machine_name")
+          .eq("location_id", tournament.location_id);
+
+      if (locationMachineError) {
+        throw locationMachineError;
+      }
+
+      const machineNames = (locationMachineRows || [])
+        .map((row) => (row.machine_name || "").trim())
+        .filter(Boolean);
+
+      let selectedMachineId = null;
+
+      if (machineNames.length > 0) {
+        const { data: allMachines, error: machinesError } =
+          await supabase
+            .from("machines")
+            .select("id,name");
+
+        if (machinesError) {
+          throw machinesError;
+        }
+
+        const normalizedNames = new Set(
+          machineNames.map((name) => name.toLowerCase())
+        );
+
+        const availableMachines = (allMachines || []).filter(
+          (machine) =>
+            normalizedNames.has(
+              (machine.name || "").trim().toLowerCase()
+            )
+        );
+
+        if (availableMachines.length > 0) {
+          selectedMachineId =
+            availableMachines[
+              Math.floor(
+                Math.random() * availableMachines.length
+              )
+            ].id;
+        }
+      }
+
+      const nextRound =
+        Math.max(
+          ...matches.map((match) => match.round_number)
+        ) + 1;
+
+      const { data: playoffMatch, error: playoffMatchError } =
+        await supabase
+          .from("tournament_matches")
+          .insert({
+            tournament_id: tournament.id,
+            round_number: nextRound,
+            machine_id: selectedMachineId,
+            status: "pending",
+          })
+          .select()
+          .single();
+
+      if (playoffMatchError) {
+        throw playoffMatchError;
+      }
+
+      const playoffPlayers = leaders.map((leader) => ({
+        match_id: playoffMatch.id,
+        player_id: leader.player_id,
+        position: null,
+        points: 0,
+      }));
+
+      const { data: insertedPlayers, error: playoffPlayersError } =
+        await supabase
+          .from("tournament_match_players")
+          .insert(playoffPlayers)
+          .select(`
+            id,
+            player_id,
+            position,
+            points,
+            players (
+              id,
+              first_name
+            )
+          `);
+
+      if (playoffPlayersError) {
+        throw playoffPlayersError;
+      }
+
+      let playoffMachine = null;
+
+      if (selectedMachineId) {
+        const { data: machineRow } = await supabase
+          .from("machines")
+          .select("id,name")
+          .eq("id", selectedMachineId)
+          .single();
+
+        playoffMachine = machineRow || null;
+      }
+
+      const playoffWithPlayers = {
+        ...playoffMatch,
+        machines: playoffMachine,
+        tournament_match_players:
+          insertedPlayers || [],
       };
-      playoff.tournament_match_players = playoff.tournament_match_players.map((row) => ({ ...row, match_id: playoff.id }));
-      const updatedMatches = [...matches, playoff];
-      setMatches(updatedMatches);
-      await persistLocal(updatedMatches);
-      await queueOperation("tournament_bundle", {
-        tournament,
-        tournament_players: [],
-        matches: updatedMatches.map((match) => ({
-          id: match.id,
-          tournament_id: match.tournament_id,
-          round_number: match.round_number,
-          machine_id: match.machine_id,
-          status: match.status,
-          match_type: match.match_type || "regular",
-          version: match.version || 1,
-          created_at: match.created_at,
-        })),
-        match_players: updatedMatches.flatMap((match) => (match.tournament_match_players || []).map((row) => ({
-          id: row.id,
-          match_id: match.id,
-          player_id: row.player_id,
-          position: row.position,
-          points: row.points,
-          created_at: row.created_at,
-        }))),
-      });
-      setCurrentRound(roundNumber);
-      if (navigator.onLine) await syncQueue();
-    } catch (error) {
-      alert(error.message || "Unable to start the playoff.");
+
+      setMatches((previousMatches) => [
+        ...previousMatches,
+        playoffWithPlayers,
+      ]);
+
+      setCurrentRound(nextRound);
+
+      alert(
+        "Winner-take-all playoff created! Select the winner to determine the tournament champion."
+      );
+    } catch (err) {
+      console.error(
+        "Unable to start winner-take-all playoff:",
+        err
+      );
+
+      alert(
+        err.message ||
+          "Unable to start the winner-take-all playoff."
+      );
     } finally {
       setPlayoffStarting(false);
     }
   }
 
-  async function finishTournament(status = "completed") {
-    if (saving) return;
-    const regularFinal = regularRounds[regularRounds.length - 1];
-    const finalGames = getRoundMatches(regularFinal);
-    const allRegularComplete = finalGames.length > 0 && finalGames.every((match) => match.status === "completed");
-    const leaders = getFinalTieLeaders();
-    const playoff = getPlayoffMatch();
+  async function completeTournament() {
+    if (saving) {
+      return;
+    }
 
-    if (status === "completed") {
-      if (!allRegularComplete) return alert("Complete every regular game before finalizing the tournament.");
-      if (leaders.length > 2) return alert("There are 3 or more players tied for first. The tournament cannot be finalized until a multi-player playoff format is implemented.");
-      if (leaders.length === 2 && (!playoff || playoff.status !== "completed")) return alert("There is a tie for first. Complete the winner-take-all playoff before finalizing the tournament.");
+    const allCompleted = matches.every(
+      (match) => match.status === "completed"
+    );
+
+    if (!allCompleted) {
+      alert(
+        "Every game must be completed before the tournament can be finalized."
+      );
+      return;
+    }
+
+    const leaders = getFinalTieLeaders();
+    const playoffRoundExists = matches.some(
+      (match) =>
+        match.round_number > Number(tournament.total_rounds || 0) &&
+        match.tournament_match_players?.length === 2
+    );
+
+    if (!playoffRoundExists && leaders.length > 2) {
+      alert(
+        "There are 3 or more players tied for first. The tournament cannot be finalized until a multi-player playoff format is implemented."
+      );
+      return;
+    }
+
+    if (!playoffRoundExists && leaders.length === 2) {
+      const hasPlayoff = matches.some(
+        (match) =>
+          match.round_number > currentRound &&
+          match.tournament_match_players?.length === 2
+      );
+
+      if (!hasPlayoff) {
+        alert(
+          "There is a tie for first. Start the winner-take-all playoff before completing the tournament."
+        );
+        return;
+      }
+
+      const playoffRoundNumber = Math.max(
+        ...matches.map((item) => item.round_number)
+      );
+
+      const playoffMatch = matches.find(
+        (match) =>
+          match.round_number === playoffRoundNumber &&
+          match.tournament_match_players?.length === 2
+      );
+
+      if (
+        !playoffMatch ||
+        playoffMatch.status !== "completed"
+      ) {
+        alert(
+          "Complete the winner-take-all playoff before finalizing the tournament."
+        );
+        return;
+      }
+    }
+
+    const confirmed = window.confirm(
+      "Complete this tournament?\n\nAll game results will be permanently saved as tournament history and will count toward player statistics."
+    );
+
+    if (!confirmed) {
+      return;
     }
 
     setSaving(true);
+
     try {
-      const nextTournament = {
-        ...tournament,
-        status,
-        completed: status === "completed",
-        completed_at: new Date().toISOString(),
-      };
-      setTournament(nextTournament);
-      await persistLocal(matches, nextTournament);
-      await queueOperation("tournament_status", {
-        tournament_id: tournament.id,
-        status,
-        completed: status === "completed",
-      });
-      if (navigator.onLine) await syncQueue();
+      const { error: tournamentError } = await supabase
+        .from("tournaments")
+        .update({
+          status: "completed",
+          completed: true,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", tournament.id);
+
+      if (tournamentError) {
+        throw tournamentError;
+      }
+
       localStorage.removeItem("currentTournament");
-      alert(status === "completed" ? "Tournament complete. Results are saved locally and will sync automatically." : "Tournament cancelled. Completed games were preserved locally and will sync automatically.");
+
+      alert(
+        "Tournament complete! All results have been saved to tournament history."
+      );
+
       window.location.reload();
-    } catch (error) {
-      alert(error.message || "Unable to update tournament status.");
+    } catch (err) {
+      console.error(
+        "Unable to complete tournament:",
+        err
+      );
+
+      alert(
+        err.message ||
+          "Unable to complete the tournament."
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  async function discardTournament() {
-    if (saving) return;
-    if (!window.confirm("Discard this tournament and all of its games? This cannot be undone.")) return;
+  async function cancelTournament(saveCompletedGames) {
+    if (saving) {
+      return;
+    }
+
     setSaving(true);
+
     try {
-      await queueOperation("delete_tournament", { tournament_id: tournament.id });
-      await clearTournamentLocal(tournament.id);
-      localStorage.removeItem("currentTournament");
-      if (navigator.onLine) await syncQueue();
-      alert("Tournament discarded.");
+      if (saveCompletedGames) {
+        const { error: tournamentError } = await supabase
+          .from("tournaments")
+          .update({
+            status: "cancelled_saved",
+            completed: false,
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", tournament.id);
+
+        if (tournamentError) {
+          throw tournamentError;
+        }
+
+        localStorage.removeItem("currentTournament");
+
+        alert(
+          "Tournament cancelled. All completed games have been saved to history and will count toward player statistics."
+        );
+      } else {
+        const { error: deleteError } = await supabase
+          .from("tournaments")
+          .delete()
+          .eq("id", tournament.id);
+
+        if (deleteError) {
+          throw deleteError;
+        }
+
+        localStorage.removeItem("currentTournament");
+
+        alert(
+          "Tournament cancelled. All tournament data has been discarded."
+        );
+      }
+
       window.location.reload();
-    } catch (error) {
-      alert(error.message || "Unable to discard the tournament.");
+    } catch (err) {
+      console.error(
+        "Unable to cancel tournament:",
+        err
+      );
+
+      alert(
+        err.message ||
+          "Unable to cancel the tournament."
+      );
     } finally {
       setSaving(false);
       setShowCancelOptions(false);
     }
   }
 
-  if (loading) return <div className="page"><h2>Current Tournament</h2><p>Loading tournament...</p></div>;
-  if (error) return <div className="page"><h2>Current Tournament</h2><OfflineBanner /><p>{error}</p><button className="primary-button" onClick={loadTournament}>Retry</button></div>;
-  if (!tournament || !matches.length) return <div className="page"><h2>Current Tournament</h2><p>No tournament games found.</p></div>;
+  if (loading) {
+    return (
+      <div className="page">
+        <h2>Current Tournament</h2>
+        <p>Loading tournament...</p>
+      </div>
+    );
+  }
 
-  const roundMatches = getRoundMatches(currentRound);
-  const isPlayoffRound = roundMatches.some((match) => (match.match_type || "regular") === "playoff");
-  const allCurrentRoundCompleted = roundMatches.length > 0 && roundMatches.every((match) => match.status === "completed");
-  const finalRound = regularRounds[regularRounds.length - 1];
-  const leaders = getFinalTieLeaders();
-  const hasTwoPlayerTie = !isPlayoffRound && currentRound === finalRound && allCurrentRoundCompleted && leaders.length === 2;
-  const hasMultiPlayerTie = !isPlayoffRound && currentRound === finalRound && allCurrentRoundCompleted && leaders.length > 2;
-  const playoff = getPlayoffMatch();
-  const tournamentComplete = isPlayoffRound ? allCurrentRoundCompleted : currentRound === finalRound && allCurrentRoundCompleted && leaders.length === 1;
-  const champion = getChampion();
+  if (error) {
+    return (
+      <div className="page">
+        <h2>Current Tournament</h2>
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  if (!tournament || matches.length === 0) {
+    return (
+      <div className="page">
+        <h2>Current Tournament</h2>
+        <p>No tournament games found.</p>
+      </div>
+    );
+  }
+
+  const roundNumbers = [
+    ...new Set(
+      matches.map((match) => match.round_number)
+    ),
+  ].sort((a, b) => a - b);
+
+  const highestRound =
+    roundNumbers.length > 0
+      ? roundNumbers[roundNumbers.length - 1]
+      : 0;
+
+  const roundMatches =
+    getRoundMatches(currentRound);
+
+  const allCurrentRoundCompleted =
+    roundMatches.length > 0 &&
+    roundMatches.every(
+      (match) => match.status === "completed"
+    );
+
+  const isFinalRound =
+    currentRound === highestRound;
+
+  const finalLeaders = getFinalTieLeaders();
+
+  const isPlayoffRound =
+    currentRound > Number(tournament.total_rounds || 0);
+
+  const hasTwoPlayerTie =
+    isFinalRound &&
+    !isPlayoffRound &&
+    allCurrentRoundCompleted &&
+    finalLeaders.length === 2;
+
+  const hasMultiPlayerTie =
+    isFinalRound &&
+    !isPlayoffRound &&
+    allCurrentRoundCompleted &&
+    finalLeaders.length > 2;
+
+  const overallChampion = getOverallChampion();
+
+  const playoffComplete =
+    isPlayoffRound &&
+    allCurrentRoundCompleted &&
+    overallChampion !== null;
+
+  const tournamentComplete =
+    (isFinalRound &&
+      allCurrentRoundCompleted &&
+      !hasTwoPlayerTie &&
+      !hasMultiPlayerTie) ||
+    playoffComplete;
+
+  const totalRounds = isPlayoffRound
+    ? Number(tournament.total_rounds || highestRound)
+    : Number(tournament.total_rounds || highestRound);
 
   return (
     <div className="page">
-      <OfflineBanner />
-      <h2>🏆 {tournament.name}</h2>
+      <h2>🏆 Head-to-Head Tournament</h2>
+
       <div className="player-card">
-        <strong>{isPlayoffRound ? "🏆 Winner-Take-All Playoff" : `Round ${currentRound} of ${finalRound}`}</strong>
-        {!isPlayoffRound && <><br /><small>{tournament.games_per_player || "?"} games per player</small></>}
+        <div>
+          <strong>{tournament.name}</strong>
+          <br />
+          <small>
+            {isPlayoffRound
+              ? "🏆 Winner-Take-All Playoff"
+              : `Round ${currentRound} of ${totalRounds}`}
+          </small>
+        </div>
       </div>
 
-      <h3>{isPlayoffRound ? "🏆 Winner-Take-All Playoff" : `Round ${currentRound}`}</h3>
+      <h3>
+        {isPlayoffRound
+          ? "🏆 Winner-Take-All Playoff"
+          : `Round ${currentRound}`}
+      </h3>
+
       {roundMatches.map((match, index) => {
+        const matchPlayers =
+          match.tournament_match_players || [];
+
         const winner = getWinner(match);
-        const editing = editingMatchId === match.id;
-        const machineName = match.machines?.name || match.machine_name || "Machine not recorded";
+
+        const isEditing =
+          editingMatchId === match.id;
+
         return (
-          <div className="player-card" key={match.id}>
+          <div
+            className="player-card"
+            key={match.id}
+          >
             <div style={{ width: "100%" }}>
-              <strong>{isPlayoffRound ? "Playoff" : `Game ${index + 1}`}</strong><br />
-              🎰 {machineName}<br /><br />
-              {(match.tournament_match_players || []).map((player, playerIndex) => {
-                const selected = winner?.player_id === player.player_id;
-                return <button key={player.id} className={selected && !editing ? "winner-button" : "nav-card"} style={{ width: "100%", marginTop: playerIndex ? "8px" : 0 }} disabled={saving} onClick={() => selectWinner(match, player.player_id)}>{selected && !editing ? "🏆 " : ""}{player.players?.first_name || player.player_name || "Unknown Player"}{selected && !editing ? " — WINNER" : ""}</button>;
-              })}
-              {match.status === "completed" && !editing && <><p><strong>Game Complete</strong></p><button className="nav-card" style={{ width: "100%" }} disabled={saving} onClick={() => setEditingMatchId(match.id)}>✏️ Edit Result</button><button className="nav-card" style={{ width: "100%", marginTop: "8px" }} disabled={saving} onClick={() => undoResult(match)}>↩️ Undo Result</button></>}
-              {editing && <p><strong>Select the correct winner:</strong></p>}
+              <strong>
+                Game {index + 1}
+              </strong>
+
+              <br />
+
+              🎰{" "}
+              {match.machines?.name ||
+                "Machine not assigned"}
+
+              <br />
+              <br />
+
+              {matchPlayers.map(
+                (matchPlayer, playerIndex) => {
+                  const isWinner =
+                    winner?.player_id ===
+                    matchPlayer.player_id;
+
+                  return (
+                    <button
+                      key={matchPlayer.id}
+                      className={
+                        isWinner && !isEditing
+                          ? "winner-button"
+                          : "nav-card"
+                      }
+                      style={{
+                        width: "100%",
+                        marginTop:
+                          playerIndex === 0
+                            ? "0"
+                            : "8px",
+                        opacity:
+                          saving ? 0.7 : 1,
+                      }}
+                      disabled={saving}
+                      onClick={() =>
+                        selectWinner(
+                          match,
+                          matchPlayer.player_id
+                        )
+                      }
+                    >
+                      {isWinner && !isEditing
+                        ? "🏆 "
+                        : ""}
+                      {matchPlayer.players
+                        ?.first_name ||
+                        "Unknown Player"}
+
+                      {isWinner && !isEditing
+                        ? " — WINNER"
+                        : ""}
+                    </button>
+                  );
+                }
+              )}
+
+              {isMatchCompleted(match) &&
+                !isEditing && (
+                  <>
+                    <p>
+                      <strong>
+                        Game Complete
+                      </strong>
+                    </p>
+
+                    <button
+                      className="nav-card"
+                      style={{
+                        width: "100%",
+                      }}
+                      disabled={saving}
+                      onClick={() =>
+                        startEditing(match.id)
+                      }
+                    >
+                      ✏️ Edit Result
+                    </button>
+                  </>
+                )}
+
+              {isEditing && (
+                <p>
+                  <strong>
+                    Select the correct winner:
+                  </strong>
+                </p>
+              )}
             </div>
           </div>
         );
       })}
 
-      {!isPlayoffRound && currentRound < finalRound && <button className="primary-button" disabled={!allCurrentRoundCompleted || saving || editingMatchId !== null} onClick={() => setCurrentRound(currentRound + 1)}>Proceed to Round {currentRound + 1} →</button>}
+      {!tournamentComplete &&
+        !hasTwoPlayerTie &&
+        !hasMultiPlayerTie &&
+        !isPlayoffRound && (
+          <button
+            className="primary-button"
+            disabled={
+              !allCurrentRoundCompleted ||
+              saving ||
+              editingMatchId !== null
+            }
+            onClick={proceedToNextRound}
+          >
+            {saving
+              ? "Saving..."
+              : `Proceed to Round ${
+                  currentRound + 1
+                } →`}
+          </button>
+        )}
 
-      {hasTwoPlayerTie && <div className="player-card"><h3>🏆 Tie for First!</h3><p>{leaders[0].player_name} and {leaders[1].player_name} are tied with {leaders[0].points} points.</p><p>Play one winner-take-all Head-to-Head game to determine the champion.</p><button className="primary-button" style={{ width: "100%" }} disabled={saving || playoffStarting} onClick={startWinnerTakeAllPlayoff}>{playoffStarting ? "Starting Playoff..." : "🏆 Start Winner-Take-All Playoff"}</button></div>}
+      {hasTwoPlayerTie && (
+        <div className="player-card">
+          <div>
+            <h3>🏆 Tie for First!</h3>
+            <p>
+              {finalLeaders[0].player_name} and{" "}
+              {finalLeaders[1].player_name} are tied
+              with {finalLeaders[0].points} points.
+            </p>
+            <p>
+              Play one winner-take-all Head-to-Head game
+              to determine the tournament champion.
+            </p>
+          </div>
 
-      {hasMultiPlayerTie && <div className="player-card"><h3>⚠️ Tie for First</h3><p>{leaders.length} players are tied for first.</p><p>A multi-player playoff format is required before this tournament can be finalized.</p></div>}
+          <button
+            className="primary-button"
+            style={{
+              width: "100%",
+              marginTop: "10px",
+            }}
+            disabled={
+              saving ||
+              playoffStarting ||
+              editingMatchId !== null
+            }
+            onClick={startWinnerTakeAllPlayoff}
+          >
+            {playoffStarting
+              ? "Starting Playoff..."
+              : "🏆 Start Winner-Take-All Playoff"}
+          </button>
+        </div>
+      )}
 
-      {tournamentComplete && <div className="player-card"><h3>🏆 Tournament Complete!</h3>{champion && <p>Champion: <strong>{champion.players?.first_name || champion.player_name || "Unknown Player"}</strong></p>}{playoff?.status === "completed" && <p>Playoff is recorded separately and does not add a point to the regular standings.</p>}<button className="primary-button" style={{ width: "100%" }} disabled={saving} onClick={() => finishTournament("completed")}>{saving ? "Saving..." : "🏆 Complete Tournament"}</button></div>}
+      {hasMultiPlayerTie && (
+        <div className="player-card">
+          <div>
+            <h3>⚠️ Tie for First</h3>
+            <p>
+              {finalLeaders.length} players are tied
+              for first with {finalLeaders[0].points} points.
+            </p>
+            <p>
+              A multi-player playoff format is required
+              before this tournament can be finalized.
+            </p>
+          </div>
+        </div>
+      )}
 
-      {!showCancelOptions && <button className="nav-card" style={{ width: "100%", marginTop: "16px" }} disabled={saving} onClick={() => setShowCancelOptions(true)}>✕ Cancel Tournament</button>}
-      {showCancelOptions && <div className="player-card"><h3>Cancel Tournament?</h3><p>Completed games can be preserved in history.</p><button className="primary-button" style={{ width: "100%", marginBottom: "10px" }} disabled={saving} onClick={() => finishTournament("cancelled_saved")}>💾 Save Completed Games</button><button className="nav-card" style={{ width: "100%", marginBottom: "10px" }} disabled={saving} onClick={discardTournament}>🗑️ Discard Tournament</button><button className="nav-card" style={{ width: "100%" }} onClick={() => setShowCancelOptions(false)}>← Keep Tournament</button></div>}
+      {tournamentComplete && (
+        <>
+          <div className="player-card">
+            <div>
+              <h3>🏆 Tournament Complete!</h3>
+              <p>
+                All {totalRounds} rounds have
+                been completed.
+              </p>
+              <p>
+                Review all results above, then
+                finalize the tournament to save
+                it to historical records.
+              </p>
+            </div>
+          </div>
+
+          <button
+            className="primary-button"
+            style={{
+              width: "100%",
+              marginTop: "10px",
+            }}
+            disabled={
+              saving ||
+              editingMatchId !== null
+            }
+            onClick={completeTournament}
+          >
+            {saving
+              ? "Saving..."
+              : "🏆 Complete Tournament"}
+          </button>
+        </>
+      )}
+
+      {!showCancelOptions && (
+        <button
+          className="nav-card"
+          style={{
+            width: "100%",
+            marginTop: "16px",
+          }}
+          disabled={saving}
+          onClick={() =>
+            setShowCancelOptions(true)
+          }
+        >
+          ✕ Cancel Tournament
+        </button>
+      )}
+
+      {showCancelOptions && (
+        <div
+          className="player-card"
+          style={{
+            marginTop: "16px",
+          }}
+        >
+          <h3>Cancel Tournament?</h3>
+
+          <p>
+            What would you like to do with the
+            games already played?
+          </p>
+
+          <button
+            className="primary-button"
+            style={{
+              width: "100%",
+              marginBottom: "10px",
+            }}
+            disabled={saving}
+            onClick={() =>
+              cancelTournament(true)
+            }
+          >
+            💾 Save Completed Games
+          </button>
+
+          <button
+            className="nav-card"
+            style={{
+              width: "100%",
+              marginBottom: "10px",
+            }}
+            disabled={saving}
+            onClick={() =>
+              cancelTournament(false)
+            }
+          >
+            🗑️ Discard Tournament
+          </button>
+
+          <button
+            className="nav-card"
+            style={{
+              width: "100%",
+            }}
+            disabled={saving}
+            onClick={() =>
+              setShowCancelOptions(false)
+            }
+          >
+            ← Keep Tournament
+          </button>
+        </div>
+      )}
     </div>
   );
 }
