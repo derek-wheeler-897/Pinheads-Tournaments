@@ -1,38 +1,72 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { DB } from "../data/db";
+import { supabase } from "../lib/supabase";
 
 export default function Machines() {
-  const [machines, setMachines] = useState(
-    DB.get("machines", [])
-  );
-
+  const [machines, setMachines] = useState([]);
   const [name, setName] = useState("");
 
-  function addMachine() {
-    if (!name.trim()) return;
+  useEffect(() => {
+    loadMachines();
+  }, []);
 
-    const updated = [
-      ...machines,
-      {
-        id: Date.now(),
-        name,
-        active: true,
-      },
-    ];
+  async function loadMachines() {
+    const { data, error } = await supabase
+      .from("machines")
+      .select("*")
+      .order("created_at", { ascending: true });
 
-    setMachines(updated);
-    DB.set("machines", updated);
-    setName("");
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setMachines(data || []);
   }
 
-  function removeMachine(id) {
-    const updated = machines.filter(
-      (m) => m.id !== id
-    );
+  async function addMachine() {
+  console.log("Button clicked");
+  console.log("Machine name:", name);
 
-    setMachines(updated);
-    DB.set("machines", updated);
+  if (!name.trim()) {
+    console.log("Name is empty");
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("machines")
+    .insert({
+      name: name.trim(),
+    })
+    .select();
+
+  console.log("Insert data:", data);
+  console.log("Insert error:", error);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  setName("");
+  loadMachines();
+}
+
+  async function removeMachine(id) {
+    const confirmed = window.confirm("Delete this machine?");
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from("machines")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    loadMachines();
   }
 
   return (
@@ -44,6 +78,11 @@ export default function Machines() {
           placeholder="Machine Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              addMachine();
+            }
+          }}
         />
 
         <button
@@ -65,9 +104,7 @@ export default function Machines() {
             className="player-card"
             key={machine.id}
           >
-            <div className="avatar">
-              🎰
-            </div>
+            <div className="avatar">🎰</div>
 
             <div className="player-name">
               {machine.name}
@@ -75,9 +112,7 @@ export default function Machines() {
 
             <button
               className="delete"
-              onClick={() =>
-                removeMachine(machine.id)
-              }
+              onClick={() => removeMachine(machine.id)}
             >
               <Trash2 size={20} />
             </button>

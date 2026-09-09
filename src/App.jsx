@@ -2,102 +2,154 @@ import { useState } from "react";
 import {
   House,
   Users,
-  Dice5,
+  MapPin,
   Trophy,
-  Settings
+  Settings,
+  Dices,
 } from "lucide-react";
 
 import "./App.css";
 
 import Players from "./pages/Players";
-import Machines from "./pages/Machines";
+import Locations from "./pages/Locations";
 import Tournament from "./pages/Tournament";
 import CurrentTournament from "./pages/CurrentTournament";
+import LocationDetails from "./pages/LocationDetails";
+import Machines from "./pages/Machines";
+import Statistics from "./pages/Statistics";
 
 export default function App() {
   const currentTournament =
-  localStorage.getItem(
-    "currentTournament"
-  );
-  console.log(currentTournament);
-  const [page, setPage] =
-    useState("home");
+    localStorage.getItem("currentTournament");
+
+  const [navigation, setNavigation] = useState({
+    page: "home",
+    location: null,
+  });
+
+  function navigate(page) {
+    setNavigation({
+      page,
+      location: null,
+    });
+  }
 
   function renderPage() {
-    switch (page) {
+    switch (navigation.page) {
       case "players":
         return <Players />;
+
+      case "stats":
+        return <Statistics />;
 
       case "machines":
         return <Machines />;
 
-        case "tournament":
-  return <Tournament />;
+      case "locations":
+        return (
+          <Locations
+            onOpen={(location) =>
+              setNavigation({
+                page: "location",
+                location,
+              })
+            }
+          />
+        );
 
-  case "current":
-  return <CurrentTournament />;
+      case "location":
+        return (
+          <LocationDetails
+            location={navigation.location}
+            goBack={() => navigate("locations")}
+          />
+        );
 
+      case "tournament":
+        return <Tournament />;
+
+      case "current":
+        return <CurrentTournament />;
+
+      case "home":
       default:
         return (
           <div className="page">
             <h1>🎯 Pinheads</h1>
 
-{currentTournament && (
-  <div className="player-card">
-    <div>
-      🏆 Tournament In Progress
-      <br />
-      Click Tournament to resume.
-    </div>
-  </div>
-)}
+            {currentTournament && (
+              <div className="player-card">
+                <div>
+                  🏆 Tournament In Progress
+                  <br />
+                  Click Tournament to resume.
+                </div>
+              </div>
+            )}
 
             <div className="home-grid">
-
               <button
                 className="nav-card"
-                onClick={() =>
-                  setPage("players")
-                }
+                onClick={() => navigate("players")}
               >
-                <Users size={36}/>
-                Players
+                <Users size={36} />
+                <div>Players</div>
               </button>
 
               <button
-                className="nav-card"
-                onClick={() =>
-                  setPage("machines")
-                }
-              >
-                <Dice5 size={36}/>
-                Machines
-              </button>
-
-<button
- className="nav-card"
-  onClick={() =>
-    setPage(
-      currentTournament
-        ? "current"
-        : "tournament"
-    )
-  }
+  className="nav-card"
+  onClick={() => navigate("stats")}
 >
-  <Trophy size={36} />
+  <div
+    style={{
+      fontSize: "36px",
+      lineHeight: "36px",
+    }}
+  >
+    📊
+  </div>
 
-  {currentTournament
-    ? "Resume Tournament"
-    : "Tournament"}
+  <div>Statistics</div>
 </button>
 
               <button
                 className="nav-card"
+                onClick={() => navigate("machines")}
               >
-                <Settings size={36}/>
-                Settings
+                <Dices size={36} />
+                <div>Machines</div>
               </button>
 
+              <button
+                className="nav-card"
+                onClick={() => navigate("locations")}
+              >
+                <MapPin size={36} />
+                <div>Locations</div>
+              </button>
+
+              <button
+                className="nav-card"
+                onClick={() =>
+                  navigate(
+                    currentTournament
+                      ? "current"
+                      : "tournament"
+                  )
+                }
+              >
+                <Trophy size={36} />
+                <div>
+                  {currentTournament
+                    ? "Resume Tournament"
+                    : "Tournament"}
+                </div>
+              </button>
+
+              <button className="nav-card">
+                <Settings size={36} />
+                <div>Settings</div>
+              </button>
             </div>
           </div>
         );
@@ -106,37 +158,21 @@ export default function App() {
 
   return (
     <div className="app">
-
       {renderPage()}
 
       <nav className="bottom-nav">
-
-        <button
-          onClick={() =>
-            setPage("home")
-          }
-        >
-          <House size={22}/>
+        <button onClick={() => navigate("home")}>
+          <House size={22} />
         </button>
 
-        <button
-          onClick={() =>
-            setPage("players")
-          }
-        >
-          <Users size={22}/>
+        <button onClick={() => navigate("players")}>
+          <Users size={22} />
         </button>
 
-        <button
-          onClick={() =>
-            setPage("machines")
-          }
-        >
-          <Dice5 size={22}/>
+        <button onClick={() => navigate("locations")}>
+          <MapPin size={22} />
         </button>
-
       </nav>
-
     </div>
   );
 }
